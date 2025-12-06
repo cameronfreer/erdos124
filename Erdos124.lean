@@ -392,6 +392,164 @@ def powersUpTo (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
   (Finset.univ (α := Fin k) ×ˢ Finset.range (M + 1)).filter (fun p => d p.1 ^ p.2 ≤ M) |>.map
     ⟨fun p => ⟨p.1, p.2⟩, fun _ _ h => by simp only [BasePower.mk.injEq] at h; ext <;> simp [h.1, h.2]⟩
 
+/-- Geometric series formula in ℚ: (d^(e+1) - 1)/(d-1) = ∑_{j=0}^{e} d^j -/
+lemma geom_series_eq_sum (d : ℕ) (hd : 2 ≤ d) (e : ℕ) :
+    ((d : ℚ) ^ (e + 1) - 1) / ((d : ℚ) - 1) = ∑ j ∈ Finset.range (e + 1), (d : ℚ) ^ j := by
+  have hd1 : (d : ℚ) - 1 ≠ 0 := by
+    have : (1 : ℚ) < d := by exact_mod_cast (by omega : 1 < d)
+    linarith
+  have hd_ne_one : (d : ℚ) ≠ 1 := by
+    have : (1 : ℕ) < d := by omega
+    exact_mod_cast (ne_of_gt this)
+  rw [← geom_sum_eq hd_ne_one (e + 1)]
+  field_simp
+
+/-- Each power d^j with j ≤ largestExp is ≤ n -/
+lemma pow_le_of_le_largestExp {d n j : ℕ} (hd : 2 ≤ d) (hn : 0 < n) (hj : j ≤ largestExp d n) :
+    d ^ j ≤ n := by
+  have hle := pow_largestExp_le hd hn
+  calc d ^ j ≤ d ^ largestExp d n := Nat.pow_le_pow_right (by omega : 1 ≤ d) hj
+       _ ≤ n := hle
+
+/-- Membership criterion for powersUpTo -/
+lemma mem_powersUpTo_iff {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (p : BasePower k) :
+    p ∈ powersUpTo k d M ↔ d p.idx ^ p.exp ≤ M ∧ p.exp ≤ M := by
+  unfold powersUpTo
+  simp only [Finset.mem_map, Finset.mem_filter, Finset.mem_product, Finset.mem_univ,
+    Finset.mem_range, true_and, Function.Embedding.coeFn_mk]
+  constructor
+  · rintro ⟨⟨i, e⟩, ⟨he_range, hpow⟩, heq⟩
+    simp only [BasePower.mk.injEq] at heq
+    rw [← heq.1, ← heq.2]
+    exact ⟨hpow, Nat.lt_succ_iff.mp he_range⟩
+  · intro ⟨hpow, he_range⟩
+    exact ⟨⟨p.idx, p.exp⟩, ⟨Nat.lt_succ_of_le he_range, hpow⟩, by simp⟩
+
+/-- The ones in powersUpTo: elements (i, 0) with value 1 -/
+def onesInP (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
+  (Finset.univ : Finset (Fin k)).map ⟨fun i => ⟨i, 0⟩, fun _ _ h => by simp [BasePower.ext_iff] at h; exact h⟩
+
+lemma onesInP_subset {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (hM : 0 < M) :
+    onesInP k d M ⊆ powersUpTo k d M := by
+  intro p hp
+  simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and, Function.Embedding.coeFn_mk] at hp
+  obtain ⟨i, hi⟩ := hp
+  rw [← hi, mem_powersUpTo_iff]
+  simp only [pow_zero]
+  exact ⟨hM, Nat.zero_le M⟩
+
+lemma onesInP_card {k : ℕ} {d : Fin k → ℕ} {M : ℕ} :
+    (onesInP k d M).card = k := by
+  simp only [onesInP, Finset.card_map, Finset.card_univ, Fintype.card_fin]
+
+lemma onesInP_sum {k : ℕ} {d : Fin k → ℕ} {M : ℕ} :
+    ∑ p ∈ onesInP k d M, p.val d = k := by
+  simp only [onesInP, Finset.sum_map, Function.Embedding.coeFn_mk, BasePower.val, pow_zero]
+  simp
+
+/-- Subset sum lemma: given a finset with enough total, we can find a subset with any smaller sum.
+    This uses the "ones" in the set for fine-grained adjustment. -/
+lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
+    {n : ℕ} (hn : 0 < n) (hnk : k < n)
+    (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
+    (hge : n ≤ ∑ p ∈ P, p.val d) :
+    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
+  -- The proof uses a greedy removal strategy:
+  -- 1. Start with the full set P with sum T ≥ n
+  -- 2. Remove elements until sum = n
+  -- Key: we have k ≥ 2 "ones" in P (elements (i, 0) with value 1)
+  -- When excess > k, density condition ensures a non-one power ≤ excess exists
+  classical
+  -- Define excess = T - n
+  set T := ∑ p ∈ P, p.val d with hT_def
+  -- We'll find a subset to REMOVE that sums to T - n
+  suffices h : ∃ R : Finset (BasePower k), R ⊆ P ∧ ∑ p ∈ R, p.val d = T - n by
+    obtain ⟨R, hR_sub, hR_sum⟩ := h
+    use P \ R
+    constructor
+    · exact Finset.sdiff_subset
+    · rw [Finset.sum_sdiff hR_sub, hR_sum]
+      omega
+  -- The set of ones in P
+  have hones_sub : onesInP k d n ⊆ P := by rw [hP]; exact onesInP_subset hn
+  have hones_card : (onesInP k d n).card = k := onesInP_card
+  have hones_sum : ∑ p ∈ onesInP k d n, p.val d = k := onesInP_sum
+  -- Case: T = n (excess = 0)
+  by_cases hexcess_zero : T = n
+  · exact ⟨∅, Finset.empty_subset _, by simp [hexcess_zero]⟩
+  -- Case: T > n (excess > 0)
+  have hT_gt : T > n := Nat.lt_of_le_of_ne hge (Ne.symm hexcess_zero)
+  -- Case: excess ≤ k (can remove excess ones)
+  by_cases hexcess_small : T - n ≤ k
+  · -- Remove exactly (T - n) ones
+    -- Choose a subset of ones of size (T - n)
+    have hcard_le : T - n ≤ (onesInP k d n).card := by rw [hones_card]; exact hexcess_small
+    obtain ⟨R, hR_sub_ones, hR_card⟩ := Finset.exists_subset_card_eq hcard_le
+    use R
+    constructor
+    · exact Finset.Subset.trans hR_sub_ones hones_sub
+    · -- Each element in R has value 1
+      have hR_val : ∀ p ∈ R, p.val d = 1 := by
+        intro p hp
+        have hp' := hR_sub_ones hp
+        simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and,
+          Function.Embedding.coeFn_mk] at hp'
+        obtain ⟨i, hi⟩ := hp'
+        rw [← hi]
+        simp [BasePower.val]
+      rw [Finset.sum_eq_card_nsmul (fun p hp => hR_val p hp)]
+      simp [hR_card]
+  -- Case: excess > k (need to remove non-one powers too)
+  push_neg at hexcess_small
+  -- By density argument: if all bases > excess, then ∑ 1/(d_i-1) < 1, contradiction
+  -- So some base d_i ≤ excess, and hence d_i ∈ P
+  -- This gives us a non-one power to remove
+  -- For now, we use a recursive construction
+  -- Actually, let's use strong induction on T - n
+  have hexcess_pos : 0 < T - n := by omega
+  -- Use well-founded induction on excess
+  -- We'll construct the removal set greedily
+  -- Key density lemma: if excess > k, there's a base d_i with d_i ≤ n and d_i ≤ excess
+  have hdensity_key : ∀ excess : ℕ, excess > k →
+      excess ≤ T - n → (∃ i : Fin k, d i ≤ excess ∧ d i ≤ n) ∨ excess ≤ k := by
+    intro excess hexcess_gt_k _hexcess_le
+    left
+    -- By contradiction: if all d_i > excess, then ∑ 1/(d_i-1) < k/excess < 1
+    by_contra h
+    push_neg at h
+    -- All d_i > excess or d_i > n
+    have hbound : ∀ i, (1 : ℚ) / (d i - 1) < 1 / excess := by
+      intro i
+      have hdi := h i
+      have hdi_ge : d i > excess := by
+        by_contra hle
+        push_neg at hle
+        exact hdi hle (Nat.le_of_lt (Nat.lt_of_lt_of_le hnk (Nat.le_of_lt (Nat.lt_of_le_of_lt hle (by omega : excess < T)))))
+      have hpos : (0 : ℚ) < excess := by exact_mod_cast (by omega : 0 < excess)
+      have hpos' : (0 : ℚ) < d i - 1 := by
+        have := hd i
+        have : (1 : ℚ) < d i := by exact_mod_cast (by omega : 1 < d i)
+        linarith
+      apply one_div_lt_one_div_of_lt hpos'
+      have : (d i : ℚ) > excess := by exact_mod_cast hdi_ge
+      linarith
+    have hsum_lt : ∑ i : Fin k, (1 : ℚ) / (d i - 1) < k / excess := by
+      calc ∑ i : Fin k, (1 : ℚ) / (d i - 1)
+          < ∑ _ : Fin k, (1 : ℚ) / excess := Finset.sum_lt_sum_of_nonempty (by simp [hk]) (fun i _ => hbound i)
+        _ = k / excess := by simp [Finset.sum_const, div_eq_mul_inv]
+    have hk_excess : (k : ℚ) / excess < 1 := by
+      have : (k : ℚ) < excess := by exact_mod_cast hexcess_gt_k
+      have hpos : (0 : ℚ) < excess := by exact_mod_cast (by omega : 0 < excess)
+      exact div_lt_one_of_lt this hpos
+    linarith
+  -- Now use the density key to construct the removal set
+  -- Since this is getting complex, let's use a simpler existential argument
+  -- We show by induction that any excess ≤ T - n can be achieved as a subset sum
+  -- The ones give us all values 0, 1, ..., k
+  -- For values > k, we use the density-guaranteed non-one powers
+  sorry
+
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
     ∑ p ∈ powersUpTo k d M, p.val d =
@@ -543,7 +701,55 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
     -- Summing over all i: total > n * ∑ 1/(d_i - 1) ≥ n
     have hsum_ge : n ≤ ∑ p ∈ P, p.val d := by
       -- Use capacity_lemma and geometric series summation
-      sorry
+      -- First rewrite capacity using geometric series formula
+      have hcap' : (n : ℚ) ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j := by
+        calc (n : ℚ) ≤ ∑ i, ((d i) ^ (largestExp (d i) n + 1) - 1 : ℚ) / ((d i) - 1) := _hcap
+          _ = ∑ i, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j := by
+              apply Finset.sum_congr rfl
+              intro i _
+              exact geom_series_eq_sum (d i) (hd i) (largestExp (d i) n)
+      -- Each power d i ^ j with j ≤ largestExp is in P (since d i ^ j ≤ n)
+      -- So the sum over P contains all these powers
+      have hP_contains : ∀ i : Fin k, ∀ j ∈ Finset.range (largestExp (d i) n + 1),
+          ⟨i, j⟩ ∈ P := by
+        intro i j hj
+        simp only [Finset.mem_range] at hj
+        have hj_le : j ≤ largestExp (d i) n := Nat.lt_succ_iff.mp hj
+        have hpow_le := pow_le_of_le_largestExp (hd i) hn hj_le
+        rw [mem_powersUpTo_iff]
+        exact ⟨hpow_le, Nat.le_of_lt_succ (Nat.lt_of_le_of_lt hj_le (lt_pow_largestExp_succ (hd i) hn))⟩
+      -- Sum over all (i, j) with j ≤ largestExp ≤ sum over P
+      have hle_sum : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) ≤
+          ∑ p ∈ P, p.val d := by
+        -- Build the injection from (i, j) pairs to P
+        let S := Finset.univ.sigma (fun i : Fin k => Finset.range (largestExp (d i) n + 1))
+        have hinj : ∀ x ∈ S, (⟨x.1, x.2⟩ : BasePower k) ∈ P := by
+          intro ⟨i, j⟩ hx
+          simp only [Finset.mem_sigma, Finset.mem_univ, true_and] at hx
+          exact hP_contains i j hx
+        calc ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j
+            = ∑ x ∈ S, d x.1 ^ x.2 := by
+                simp only [S, Finset.sum_sigma]
+            _ = ∑ x ∈ S, (⟨x.1, x.2⟩ : BasePower k).val d := by
+                apply Finset.sum_congr rfl
+                intro ⟨i, j⟩ _
+                simp [BasePower.val]
+            _ ≤ ∑ p ∈ P, p.val d := by
+                apply Finset.sum_le_sum_of_subset
+                intro ⟨i, j⟩ hx
+                simp only [Finset.mem_map, Function.Embedding.coeFn_mk, Finset.mem_sigma,
+                  Finset.mem_univ, true_and, S] at hx ⊢
+                exact hinj ⟨i, j⟩ (by simp [S, hx])
+      -- Combine: n ≤ rational sum = nat sum ≤ sum over P
+      have hnat_eq : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) =
+          (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j : ℚ) := by
+        push_cast
+        rfl
+      have hn_le_nat : n ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j := by
+        have := hcap'
+        rw [← hnat_eq] at this
+        exact_mod_cast this
+      exact Nat.le_trans hn_le_nat hle_sum
 
     -- Step 3: Find a subset of P that sums to exactly n
     -- This is the "complete sequence" property: if powers are listed in order
