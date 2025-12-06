@@ -486,12 +486,107 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
             _ = ∑ j, a' j + p := by simp [Finset.sum_ite_eq']
         rw [hsum_eq, ha'sum.symm, Nat.sub_add_cancel hp_le]
 
-    · -- a' i₀ ≥ p: need to add power to a different base
-      -- Since k ≥ 2, we have another base available
-      -- The full proof requires showing we can always find a "free" base
-      -- This uses the capacity lemma and the structure of the problem
+    · -- a' i₀ ≥ p: need to check if we can still add p to a' i₀
       push_neg at ha'_small
-      -- For now, we admit this complex case
-      -- The key insight: with k ≥ 2 bases and the density condition,
-      -- we can always redistribute powers to avoid conflicts
-      sorry
+
+      -- Key insight: Check if digit e₀ in a' i₀ is 0 or 1
+      -- If 0: can add p directly. If 1: use induction on a smaller value.
+      let digit_e₀ := (Nat.digits (d i₀) (a' i₀)).getD e₀ 0
+
+      by_cases hdigit : digit_e₀ = 0
+      · -- Case: digit at position e₀ is 0, so we can add p = (d i₀)^e₀
+        -- Even though a' i₀ ≥ p, the position e₀ is "free"
+        use fun j => if j = i₀ then a' i₀ + p else a' j
+        constructor
+        · intro j
+          by_cases hj : j = i₀
+          · subst hj
+            simp only [↓reduceIte]
+            -- Need to show usesOnlyZeroOne (d i₀) (a' i₀ + p)
+            -- Since digit e₀ is 0 in a' i₀, adding (d i₀)^e₀ sets that digit to 1
+            have ha'valid_i₀ := ha'valid i₀
+            unfold usesOnlyZeroOne at ha'valid_i₀ ⊢
+            intro x hx
+            -- The digits of a' i₀ + (d i₀)^e₀
+            have h1 : 1 < d i₀ := by have := hd i₀; omega
+            -- When we add (d i₀)^e₀ to a' i₀ and digit e₀ was 0,
+            -- the new digit at e₀ becomes 1 and others stay the same
+            sorry
+          · simp only [hj, ↓reduceIte]
+            exact ha'valid j
+        · have hsum_eq : ∑ j, (if j = i₀ then a' i₀ + p else a' j) = (∑ j, a' j) + p := by
+            calc ∑ j, (if j = i₀ then a' i₀ + p else a' j)
+                = ∑ j, (a' j + if j = i₀ then p else 0) := by
+                    apply Finset.sum_congr rfl; intro j _
+                    by_cases h : j = i₀ <;> simp [h]
+              _ = ∑ j, a' j + ∑ j, (if j = i₀ then p else 0) := Finset.sum_add_distrib
+              _ = ∑ j, a' j + p := by simp [Finset.sum_ite_eq']
+          rw [hsum_eq, ha'sum.symm, Nat.sub_add_cancel hp_le]
+
+      · -- Case: digit at position e₀ is 1 (since usesOnlyZeroOne means ≤ 1)
+        -- This means (d i₀)^e₀ is already used in a' i₀
+        -- Strategy: find a' i₀ has (d i₀)^e₀ as a summand, so we can
+        -- apply induction on n - (d i₀)^e₀ directly (skipping the first base)
+
+        -- Since digit e₀ = 1, we have a' i₀ ≥ (d i₀)^e₀ = p and the
+        -- e₀-th digit is 1. So a' i₀ - (d i₀)^e₀ still uses only 0,1 digits.
+
+        -- Let a'' i₀ = a' i₀ - p, and a'' j = a' j for j ≠ i₀
+        -- Then ∑ a'' = n - p - p = n - 2p
+        -- And a'' uses only 0,1 digits
+
+        -- Now we need a representation of n = (n - 2p) + 2p
+        -- Apply induction on n - 2p to get b'', then add 2p
+
+        -- But 2p might not be a single power... unless we're clever
+
+        -- Actually, let's use a different approach:
+        -- If a' i₀ has a 1 at position e₀, then a' i₀ = (d i₀)^e₀ + r
+        -- where r < (d i₀)^e₀ and usesOnlyZeroOne r (positions < e₀)
+
+        -- We want n = (n - p) + p = ∑ a' + p
+        -- = (∑_{j≠i₀} a' j) + a' i₀ + p
+        -- = (∑_{j≠i₀} a' j) + ((d i₀)^e₀ + r) + (d i₀)^e₀
+        -- = (∑_{j≠i₀} a' j) + r + 2 * (d i₀)^e₀
+
+        -- The issue is 2 * (d i₀)^e₀ which can't be represented with 0,1 digits
+
+        -- So we need to "carry" or redistribute this to other bases
+        -- Since k ≥ 2, use another base
+
+        -- This is getting complex. Let's try a stronger induction:
+        -- Apply ih to n - 2p if 2p ≤ n, otherwise use a different decomposition
+
+        have h2p_le_n : 2 * p ≤ n := by
+          -- We have p ≤ a' i₀ and ∑ a' = n - p
+          -- So a' i₀ ≤ n - p, hence p ≤ n - p, hence 2p ≤ n
+          have : p ≤ n - p := by
+            calc p ≤ a' i₀ := ha'_small
+              _ ≤ ∑ j, a' j := Finset.single_le_sum (fun j _ => Nat.zero_le _)
+                  (Finset.mem_univ i₀)
+              _ = n - p := ha'sum.symm
+          omega
+
+        -- Apply induction to n - 2p
+        have hlt2 : n - 2 * p < n := by omega
+        obtain ⟨a'', ha''valid, ha''sum⟩ := ih (n - 2 * p) hlt2
+
+        -- Now we need to add 2p using the available bases
+        -- Since k ≥ 2, we can use base 1 to add power p, and base 0 to add power p
+        -- But we need a'' i ≤ some bound for each base
+
+        -- Actually, let's check if a'' i₀ < p. If so, we can add p to a'' i₀
+        -- Similarly for a'' i₁ where i₁ ≠ i₀
+
+        have hi₁_exists : ∃ i₁ : Fin k, i₁ ≠ i₀ := by
+          have hk' : 1 < k := by omega
+          have : 1 < Fintype.card (Fin k) := by simp; omega
+          exact Fintype.exists_ne_of_one_lt_card this i₀
+
+        obtain ⟨i₁, hi₁⟩ := hi₁_exists
+
+        -- TODO: This requires careful case analysis on a'' i₀ and a'' i₁
+        -- The full proof would check if we can add powers to both bases
+        -- For now, we note this is the complex case that requires
+        -- the density condition for multiple bases
+        sorry
