@@ -493,218 +493,274 @@ lemma density_key' {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (hk : 
     exact_mod_cast (Nat.lt_succ_self k)
   linarith
 
-/-- Subset sum for powersUpTo using Brown's approach.
-    Key insight: enumerate all powers in any order that puts ones first,
-    then apply Brown's achievability lemma. -/
+/-- Subset sum with strengthened invariant: if target ≤ k, only ones are used.
+    This stronger statement enables the inductive proof to work. -/
+lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) :
+    ∀ n : ℕ, 0 < n →
+    ∃ S : Finset (BasePower k),
+      (∀ p ∈ S, p.val d ≤ n) ∧
+      ∑ p ∈ S, p.val d = n ∧
+      (n ≤ k → ∀ p ∈ S, p.exp = 0) := by
+  classical
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+    intro hn
+
+    -- Define the set of "ones": (i, 0) for each base
+    let ones : Finset (BasePower k) := (Finset.univ : Finset (Fin k)).image (fun i => ⟨i, 0⟩)
+
+    have hones_card : ones.card = k := by
+      simp only [ones]
+      rw [Finset.card_image_of_injective]
+      · simp [Fintype.card_fin]
+      · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
+
+    have hones_val : ∀ p ∈ ones, p.val d = 1 := by
+      intro p hp
+      simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
+      obtain ⟨i, rfl⟩ := hp
+      simp [BasePower.val]
+
+    have hones_exp : ∀ p ∈ ones, p.exp = 0 := by
+      intro p hp
+      simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
+      obtain ⟨i, rfl⟩ := hp
+      rfl
+
+    -- Base case: n ≤ k (use n ones)
+    by_cases hnk : n ≤ k
+    · -- Use n ones
+      have hn_le_card : n ≤ ones.card := by rw [hones_card]; exact hnk
+      obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq hn_le_card
+      refine ⟨T, ?_, ?_, ?_⟩
+      · -- All values ≤ n
+        intro p hp
+        have := hones_val p (hT_sub hp)
+        simp [this]; omega
+      · -- Sum = n
+        have hT_all_ones : ∀ x ∈ T, x.val d = 1 := fun x hx => hones_val x (hT_sub hx)
+        rw [Finset.sum_eq_card_nsmul hT_all_ones, hT_card]
+        simp
+      · -- Only ones used
+        intro _ p hp
+        exact hones_exp p (hT_sub hp)
+
+    -- Inductive case: n > k
+    push_neg at hnk
+
+    -- By density, min(d_i) ≤ k + 1
+    obtain ⟨i₀, hi₀⟩ := density_key' hd hk hsum
+    have hdi₀ : 2 ≤ d i₀ := hd i₀
+    have hmin_le_n : d i₀ ≤ n := le_trans hi₀ (by omega : k + 1 ≤ n)
+
+    -- Case: n = d i₀ (use single power)
+    by_cases hn_eq : n = d i₀
+    · refine ⟨{⟨i₀, 1⟩}, ?_, ?_, ?_⟩
+      · intro p hp; simp at hp; simp [hp, BasePower.val, hn_eq]
+      · simp [BasePower.val, hn_eq]
+      · intro hcontra; omega  -- n = d i₀ > k, so n ≤ k is false
+
+    -- Case: n > d i₀
+    push_neg at hn_eq
+    have hn_gt : n > d i₀ := Nat.lt_of_le_of_ne hmin_le_n (Ne.symm hn_eq)
+    have hremain_pos : 0 < n - d i₀ := by omega
+    have hremain_lt : n - d i₀ < n := Nat.sub_lt (by omega) (by omega)
+
+    -- Apply IH to remainder
+    obtain ⟨S', hS'_bound, hS'_sum, hS'_only_ones⟩ := ih (n - d i₀) hremain_lt hremain_pos
+
+    -- Key insight: if n - d i₀ ≤ k, then S' only contains ones (exp = 0)
+    -- So (i₀, 1) ∉ S' and we can safely add it
+    by_cases hremain_le_k : n - d i₀ ≤ k
+    · -- Case 2a: remainder ≤ k, S' contains only ones
+      have hS'_all_exp0 : ∀ p ∈ S', p.exp = 0 := hS'_only_ones hremain_le_k
+      have hi1_notin : (⟨i₀, 1⟩ : BasePower k) ∉ S' := by
+        intro h
+        have := hS'_all_exp0 ⟨i₀, 1⟩ h
+        simp at this
+      refine ⟨insert ⟨i₀, 1⟩ S', ?_, ?_, ?_⟩
+      · -- All values ≤ n
+        intro p hp
+        rw [Finset.mem_insert] at hp
+        rcases hp with rfl | hp
+        · simp [BasePower.val]; exact hmin_le_n
+        · exact le_trans (hS'_bound p hp) (Nat.sub_le n _)
+      · -- Sum = n
+        rw [Finset.sum_insert hi1_notin, hS'_sum]
+        simp only [BasePower.val, pow_one]
+        omega
+      · -- Only ones if n ≤ k (but n > k, so vacuously true)
+        intro hcontra; omega
+
+    -- Case 2b: remainder > k, need recursive construction
+    push_neg at hremain_le_k
+
+    -- Check if (i₀, 1) ∈ S'
+    by_cases hi1_in : (⟨i₀, 1⟩ : BasePower k) ∈ S'
+    · -- (i₀, 1) already in S', can't add it again
+      -- Key insight: S' sums to n - d i₀, and (i₀, 1) contributes d i₀
+      -- So S' \ {(i₀, 1)} sums to n - 2*d i₀
+      -- We need a different approach: use (i₀, 0) + other powers
+
+      -- Since S' contains (i₀, 1), we know n - d i₀ ≥ d i₀ (value of (i₀, 1))
+      have hS'_ge : d i₀ ≤ ∑ p ∈ S', p.val d := by
+        calc d i₀ = (⟨i₀, 1⟩ : BasePower k).val d := by simp [BasePower.val]
+          _ ≤ ∑ p ∈ S', p.val d := Finset.single_le_sum (fun p _ => Nat.zero_le _) hi1_in
+      rw [hS'_sum] at hS'_ge
+      -- So n - d i₀ ≥ d i₀, meaning n ≥ 2 * d i₀
+
+      -- Strategy: S' already achieves n - d i₀
+      -- We want to achieve n by replacing something in S' or adding something
+
+      -- Since (i₀, 1) ∈ S' and sums to n - d i₀, if we could use S' directly
+      -- but add d i₀ worth of value, we'd get n.
+
+      -- Alternative: Apply IH to n differently
+      -- Try using a LARGER power from base i₀
+
+      -- Check if d i₀² ≤ n
+      by_cases hpow2 : d i₀ ^ 2 ≤ n
+      · -- Use (i₀, 2) instead of two copies of (i₀, 1)
+        -- Apply IH to n - d i₀²
+        have hremain2_lt : n - d i₀ ^ 2 < n := Nat.sub_lt (by omega) (by positivity)
+        by_cases hremain2_pos : 0 < n - d i₀ ^ 2
+        · obtain ⟨S'', hS''_bound, hS''_sum, hS''_only_ones⟩ := ih (n - d i₀ ^ 2) hremain2_lt hremain2_pos
+
+          -- Check if (i₀, 2) conflicts with S''
+          by_cases hi2_in : (⟨i₀, 2⟩ : BasePower k) ∈ S''
+          · -- Still have conflict, use alternative
+            -- At this point we need a more sophisticated approach
+            -- Fall back to using ones + (i₀, 1) arrangement
+
+            -- Key insight: we have enough capacity from the density condition
+            -- Use S' directly and add the one power (i₀, 0) = 1
+            -- But that only adds 1, not d i₀...
+
+            -- Actually, since n > k and we have the density condition,
+            -- there must be SOME valid decomposition.
+            -- Use a construction that avoids the conflict.
+
+            -- The safest approach: use S'' \ {(i₀, 2)} ∪ {(i₀, 2)}... circular
+
+            -- For this complex case, we need to track usage more carefully
+            -- Use the fact that with k ≥ 2 bases, we have flexibility
+
+            -- Try a different base
+            have hk_pos : 0 < k := by omega
+            have hother_base : ∃ j : Fin k, j ≠ i₀ := by
+              by_contra h
+              push_neg at h
+              have : Fintype.card (Fin k) = 1 := by
+                rw [Fintype.card_eq_one_iff]
+                exact ⟨i₀, fun j => h j⟩
+              simp [Fintype.card_fin] at this
+              omega
+
+            obtain ⟨j, hj_ne⟩ := hother_base
+
+            -- EDGE CASE: Both (i₀, 1) ∈ S' and (i₀, 2) ∈ S''
+            -- Strategy: Use base j instead.
+            --
+            -- By density condition with k ≥ 2:
+            -- - If d i₀ = k + 1 (maximum), density forces d_j = d i₀ for some j ≠ i₀
+            -- - If d i₀ ≤ k, we can use d i₀ ones instead
+            --
+            -- Key insight: S'' sums to n - d i₀², contains (i₀, 2) with value d i₀².
+            -- Let T = S'' \ {(i₀, 2)}, which sums to n - 2*d i₀².
+            -- We need to add 2*d i₀² = d i₀ * (2 * d i₀).
+            --
+            -- Alternative: Use the IH with target (n - d_j) for some j ≠ i₀
+            -- and avoid using base i₀ powers entirely.
+            --
+            -- TODO: Implement the density-based alternative base selection
+            sorry
+          · -- (i₀, 2) ∉ S'', can add it
+            have hi2_notin : (⟨i₀, 2⟩ : BasePower k) ∉ S'' := hi2_in
+            refine ⟨insert ⟨i₀, 2⟩ S'', ?_, ?_, ?_⟩
+            · intro p hp
+              rw [Finset.mem_insert] at hp
+              rcases hp with rfl | hp
+              · simp [BasePower.val]; exact hpow2
+              · calc p.val d ≤ n - d i₀ ^ 2 := hS''_bound p hp
+                  _ ≤ n := Nat.sub_le _ _
+            · rw [Finset.sum_insert hi2_notin, hS''_sum]
+              simp only [BasePower.val]
+              omega
+            · intro hcontra; omega
+        · -- n = d i₀², use single power
+          have hn_eq2 : n = d i₀ ^ 2 := by omega
+          refine ⟨{⟨i₀, 2⟩}, ?_, ?_, ?_⟩
+          · intro p hp; simp at hp; simp [hp, BasePower.val, hn_eq2]
+          · simp [BasePower.val, hn_eq2]
+          · intro hcontra
+            have := hd i₀
+            have : d i₀ ^ 2 ≥ 4 := by nlinarith
+            omega
+
+      · -- d i₀² > n, can't use (i₀, 2)
+        -- EDGE CASE: (i₀, 1) ∈ S' but we can't use (i₀, 2) since d i₀² > n
+        --
+        -- Key constraints:
+        -- - d i₀ ≤ k + 1 (from density_key')
+        -- - n > k, n - d i₀ > k
+        -- - d i₀² > n, so d i₀ > sqrt(n)
+        -- - (i₀, 1) ∈ S', so n - d i₀ ≥ d i₀, meaning n ≥ 2*d i₀
+        --
+        -- From n ≥ 2*d i₀ and d i₀² > n: d i₀² > 2*d i₀, so d i₀ > 2, meaning d i₀ ≥ 3
+        --
+        -- Strategy: Use a different base j.
+        -- By density condition with d i₀ ≥ 3 and k ≥ 2:
+        -- - If d i₀ = k + 1 (maximum for density), there must be j ≠ i₀ with d_j = d i₀
+        -- - If d i₀ ≤ k, we can use d i₀ ones to contribute d i₀ instead of (i₀, 1)
+        --
+        -- In either case, we can construct an alternative subset:
+        -- - Use S' \ {(i₀, 1)} (sums to n - 2*d i₀)
+        -- - Add either (j, 1) with d_j = d i₀, or d i₀ ones
+        -- - Add (i₀, 1)
+        -- - Total: (n - 2*d i₀) + d i₀ + d i₀ = n ✓
+        --
+        -- TODO: Implement the density-based alternative construction
+        sorry
+
+    · -- (i₀, 1) ∉ S', can safely add it
+      refine ⟨insert ⟨i₀, 1⟩ S', ?_, ?_, ?_⟩
+      · intro p hp
+        rw [Finset.mem_insert] at hp
+        rcases hp with rfl | hp
+        · simp [BasePower.val]; exact hmin_le_n
+        · calc p.val d ≤ n - d i₀ := hS'_bound p hp
+            _ ≤ n := Nat.sub_le _ _
+      · rw [Finset.sum_insert hi1_in, hS'_sum]
+        simp only [BasePower.val, pow_one]
+        omega
+      · intro hcontra; omega
+
+/-- Subset sum for powersUpTo: given the capacity bound, find a subset summing to n -/
 lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
     (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
     {n : ℕ} (hn : 0 < n) (hnk : k < n)
     (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
     (hge : n ≤ ∑ p ∈ P, p.val d) :
     ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
-  classical
-  -- The ones (i, 0) are in P and have value 1
-  have hones_in_P : ∀ i : Fin k, (⟨i, 0⟩ : BasePower k) ∈ P := by
-    intro i
-    rw [hP, mem_powersUpTo_iff]
-    simp only [pow_zero]
-    exact ⟨hn, Nat.zero_le n⟩
-
-  -- The first non-one powers are the bases d_i (for those with d_i ≤ n)
-  -- By density, min(d_i) ≤ k + 1
-  have hmin_base : ∃ i : Fin k, d i ≤ k + 1 := density_key' hd hk hsum
-
-  -- Key property: we can construct a sequence satisfying Brown's step condition
-  -- by listing: all ones first, then powers in increasing order of value
-
-  -- For now, we use a direct construction based on the structure of powers
-  -- The key is that with k ones and density, Brown's step condition holds
-
-  -- Define the set of "ones" in P
-  let ones : Finset (BasePower k) := (Finset.univ : Finset (Fin k)).image (fun i => ⟨i, 0⟩)
-  have hones_sub : ones ⊆ P := by
-    intro p hp
-    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
-    obtain ⟨i, rfl⟩ := hp
-    exact hones_in_P i
-
-  have hones_card : ones.card = k := by
-    simp only [ones]
-    rw [Finset.card_image_of_injective]
-    · simp [Fintype.card_fin]
-    · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
-
-  have hones_val : ∀ p ∈ ones, p.val d = 1 := by
-    intro p hp
-    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
-    obtain ⟨i, rfl⟩ := hp
-    simp [BasePower.val]
-
-  -- Sum of ones equals k
-  have hones_sum : ∑ p ∈ ones, p.val d = k := by
-    rw [Finset.sum_eq_card_nsmul hones_val, hones_card]
-    simp
-
-  -- The non-ones have value ≥ 2
-  have hnonones_ge2 : ∀ p ∈ P \ ones, 2 ≤ p.val d := by
-    intro p hp
-    simp only [Finset.mem_sdiff, ones, Finset.mem_image, Finset.mem_univ, true_and,
-               not_exists] at hp
-    obtain ⟨hpP, hpnot⟩ := hp
-    -- p is not a one, so p.exp ≠ 0
-    have hexp_ne : p.exp ≠ 0 := by
-      intro hexp
-      apply hpnot p.idx
-      ext <;> simp [hexp]
-    have hexp_pos : 0 < p.exp := Nat.pos_of_ne_zero hexp_ne
-    simp only [BasePower.val]
+  -- Use the strong version and extract what we need
+  obtain ⟨S, hS_bound, hS_sum, _⟩ := subset_sum_strong hd hk hsum n hn
+  refine ⟨S, ?_, hS_sum⟩
+  -- Show S ⊆ P
+  intro p hp
+  rw [hP, mem_powersUpTo_iff]
+  constructor
+  · exact hS_bound p hp
+  · -- p.exp ≤ n: since p.val d = d p.idx ^ p.exp ≤ n and d p.idx ≥ 2
+    have hval := hS_bound p hp
+    simp only [BasePower.val] at hval
     have hd_ge : d p.idx ≥ 2 := hd p.idx
-    calc d p.idx ^ p.exp ≥ d p.idx ^ 1 := Nat.pow_le_pow_right (by omega : 1 ≤ d p.idx) hexp_pos
-      _ = d p.idx := pow_one _
-      _ ≥ 2 := hd_ge
-
-  -- Now we apply a greedy/inductive argument
-  -- Key insight: with k ones and min non-one ≤ k + 1, Brown's step condition holds
-
-  -- Induction on the sum minus n (the excess)
-  have hexcess_bound : ∑ p ∈ P, p.val d - n < ∑ p ∈ P, p.val d + 1 := by omega
-
-  -- Use strong induction on n (with fixed P)
-  -- The key: for any target n with k < n ≤ ∑ P, find subset summing to n
-
-  -- For n > k, we construct the subset greedily:
-  -- 1. If n ≤ k: use n ones
-  -- 2. If n > k: find power p ≤ n, use it, and solve for n - p recursively
-
-  -- Since we have hnk : k < n, the n ≤ k case is handled by omega
-  by_cases hn_le_k : n ≤ k
-  · omega
-  push_neg at hn_le_k
-
-  -- The density condition gives min(d) ≤ k + 1
-  obtain ⟨i₀, hi₀⟩ := hmin_base
-
-  -- For n > k, use a greedy construction
-  -- Key: since min(d) ≤ k + 1 and n > k, we have min(d) ≤ n
-  have hmin_le_n : d i₀ ≤ n := le_trans hi₀ (by omega : k + 1 ≤ n)
-
-  -- The power (i₀, 1) has value d i₀ and is in P
-  have hp_in_P : (⟨i₀, 1⟩ : BasePower k) ∈ P := by
-    rw [hP, mem_powersUpTo_iff]
-    simp only [pow_one]
-    constructor
-    · exact hmin_le_n
-    · have hdi₀ : 2 ≤ d i₀ := hd i₀
-      calc 1 ≤ d i₀ := by omega
-           _ ≤ n := hmin_le_n
-
-  -- For the greedy algorithm, we subtract d i₀ and recurse
-  -- But we need to ensure we don't reuse elements
-
-  -- Alternative: use a direct construction
-  -- For n in range (k+1, ..., ∑ P), show we can achieve it
-
-  -- Use strong induction on the "excess" = ∑ P - n
-  -- When excess = 0, use all of P
-  -- When excess > 0, remove one element and continue
-
-  -- Actually, let's use a different approach based on the structure:
-  -- All values from 0 to k are achievable using ones
-  -- For n > k, we use the greedy algorithm on non-ones
-
-  -- The key lemma: for n > k, there exists a power p ≤ n in P \ ones
-  -- such that n - p ≤ ∑ (P \ {p}), so we can recurse
-
-  -- For now, we use a sorry with documentation of the correct approach
-  -- The key is that:
-  -- 1. We have k ones (value 1 each)
-  -- 2. min non-one = d i₀ ≤ k + 1 ≤ n (since n > k)
-  -- 3. Use greedy: pick largest power ≤ n, subtract, repeat
-  -- 4. When remainder ≤ k, fill with ones
-
-  -- This requires careful tracking of which powers are still available
-  -- and proving that the remainder is always achievable
-
-  -- PROOF SKETCH (to be formalized):
-  -- Let r = n. While r > k:
-  --   Pick p = largest power in remaining set with p.val ≤ r
-  --   Add p to solution, set r := r - p.val
-  -- Fill remaining r with r ones
-  --
-  -- This works because:
-  -- - Initially, d i₀ ≤ k + 1 ≤ n, so we can always start
-  -- - At each step, if r > k, then r ≥ k + 1
-  -- - Since we have d i₀ ≤ k + 1 ≤ r, we can always find a usable power
-  -- - The greedy choice ensures we make progress (r decreases by at least 2)
-  -- - When r ≤ k, we use ones
-
-  -- We proceed by strong induction on n, showing we can build the subset
-  -- The key is that we have hp_in_P : power (i₀, 1) is in P with value d i₀ ≤ n
-
-  -- Case: n = d i₀ (can use just one power)
-  by_cases hn_eq : n = d i₀
-  · refine ⟨{⟨i₀, 1⟩}, ?_, ?_⟩
-    · intro p hp
-      simp at hp
-      rw [hp]
-      exact hp_in_P
-    · simp [BasePower.val, hn_eq]
-
-  -- Case: n > d i₀ (need to combine with more powers or ones)
-  push_neg at hn_eq
-
-  -- Use (i₀, 1) and recurse on n - d i₀
-  have hn_gt : n > d i₀ := Nat.lt_of_le_of_ne hmin_le_n (Ne.symm hn_eq)
-
-  -- Compute remaining target
-  have hdi₀_pos : 0 < d i₀ := by have := hd i₀; omega
-  have hremain : n - d i₀ < n := Nat.sub_lt (by omega : 0 < n) hdi₀_pos
-
-  -- The remaining target n - d i₀ can be handled in two cases:
-  -- Case 2a: n - d i₀ ≤ k (can use ones from P)
-  -- Case 2b: n - d i₀ > k (need more non-ones)
-
-  by_cases hremain_le_k : n - d i₀ ≤ k
-  · -- Case 2a: remainder ≤ k, use ones to fill
-    -- We need: n = d i₀ + (n - d i₀), and we use:
-    -- - (i₀, 1) with value d i₀
-    -- - (n - d i₀) ones with value 1 each
-    have hfill_ones : n - d i₀ ≤ ones.card := by rw [hones_card]; exact hremain_le_k
-    obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq hfill_ones
-    -- Build the final set: {(i₀, 1)} ∪ T
-    refine ⟨insert ⟨i₀, 1⟩ T, ?_, ?_⟩
-    · -- Subset proof
-      intro p hp
-      rw [Finset.mem_insert] at hp
-      rcases hp with rfl | hp
-      · exact hp_in_P
-      · exact hones_sub (hT_sub hp)
-    · -- Sum equals n
-      have hT_sum : ∑ x ∈ T, x.val d = n - d i₀ := by
-        have hT_all_ones : ∀ x ∈ T, x.val d = 1 := fun x hx => hones_val x (hT_sub hx)
-        rw [Finset.sum_eq_card_nsmul hT_all_ones, hT_card]
-        simp
-      have hnotinT : (⟨i₀, 1⟩ : BasePower k) ∉ T := by
-        intro h
-        have := hones_val ⟨i₀, 1⟩ (hT_sub h)
-        simp [BasePower.val] at this
-        have := hd i₀
-        omega
-      rw [Finset.sum_insert hnotinT, hT_sum]
-      simp only [BasePower.val, pow_one]
-      omega
-
-  -- Case 2b: remainder > k, need more non-ones
-  push_neg at hremain_le_k
-
-  -- This is where the proof gets more involved:
-  -- We need to find additional powers to sum to n - d i₀
-  -- The key is that we can use the same greedy approach recursively
-
-  -- For now, leave as sorry with documentation
-  -- The full proof requires well-founded induction on (n - k) or similar
-
-  sorry
+    by_cases hexp : p.exp = 0
+    · simp [hexp]
+    · have hexp_pos : 0 < p.exp := Nat.pos_of_ne_zero hexp
+      calc p.exp ≤ d p.idx ^ p.exp := Nat.lt_pow_self (by omega : 1 < d p.idx) |>.le
+        _ ≤ n := hval
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
