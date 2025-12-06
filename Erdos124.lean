@@ -351,22 +351,99 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
     -- For n > 0, we use the capacity lemma which shows there's enough room
     have _hcap := capacity_lemma hd hsum hn
 
-    -- Case split on whether n ≤ k (can use just ones) or n > k (need larger powers)
-    -- With k ≥ 2 bases, we have at least 2 ones available.
-    -- The proof uses a greedy construction with careful tracking.
-    --
-    -- Key insight: Each base d_i ≥ 3 has powers 1, d_i, d_i^2, ...
-    -- The greedy algorithm selects powers in decreasing order:
-    -- 1. Start with remaining = n
-    -- 2. Find largest unused power p ≤ remaining
-    -- 3. Use p, set remaining := remaining - p
-    -- 4. Repeat until remaining = 0
-    --
-    -- The density condition ensures this always terminates because:
-    -- - The total capacity of all available powers exceeds n
-    -- - At each step, we can always find a power ≤ remaining
-    --   (worst case: use a 1 from an unused base)
-    --
-    -- Full formalization requires defining the greedy selection and proving
-    -- that it never runs out of valid choices. This is left for future work.
-    sorry
+    -- Case 1: n ≤ k (can use just ones from k bases)
+    by_cases hnk : n ≤ k
+    · -- Use n ones from n different bases
+      -- Since we have k bases and n ≤ k, we can pick n of them to contribute 1 each
+      have hfin : n ≤ Fintype.card (Fin k) := by simp [Fintype.card_fin]; exact hnk
+      use fun i => if i.val < n then 1 else 0
+      constructor
+      · intro i
+        by_cases hi : i.val < n
+        · simp only [hi, ↓reduceIte]
+          exact usesOnlyZeroOne_one (hd i)
+        · simp only [hi, ↓reduceIte]
+          exact usesOnlyZeroOne_zero (d i)
+      · -- Sum equals n: we have n ones and (k - n) zeros
+        have hsum_eq : ∑ i : Fin k, (if i.val < n then 1 else 0) = n := by
+          rw [Finset.sum_boole]
+          -- Goal: (Finset.univ.filter fun i : Fin k => i.val < n).card = n
+          have hcard : (Finset.univ.filter fun i : Fin k => i.val < n).card = n := by
+            have h1 : ∀ i : Fin k, i ∈ Finset.univ.filter (fun i => i.val < n) ↔ i.val < n := by
+              intro i; simp
+            -- The filter contains exactly {⟨0, _⟩, ⟨1, _⟩, ..., ⟨n-1, _⟩}
+            conv_rhs => rw [← Finset.card_fin n]
+            apply Finset.card_bij (fun i _ => ⟨i.val, by simp at *; omega⟩)
+            · intro i hi; simp
+            · intro i₁ _ i₂ _ h
+              simp only [Fin.ext_iff] at h ⊢
+              exact h
+            · intro j _
+              use ⟨j.val, by omega⟩
+              simp
+          exact hcard
+        simp only [hsum_eq]
+
+    -- Case 2: n > k (need larger powers, more complex argument)
+    push_neg at hnk
+
+    -- Key helper: adding a power to a smaller number preserves 0,1 digits
+    -- Proof idea: when m < b^e, the digits of m have length ≤ e.
+    -- So m + b^e = ofDigits b (digits(m) ++ zeros ++ [1]) where all entries are ≤ 1.
+    have add_pow_valid : ∀ (b m e : ℕ), 2 ≤ b → m < b ^ e →
+        usesOnlyZeroOne b m → usesOnlyZeroOne b (m + b ^ e) := by
+      intro b m e hb hm hvalid
+      by_cases hm_zero : m = 0
+      · simp only [hm_zero, zero_add]
+        exact usesOnlyZeroOne_pow hb e
+      · -- Technical: uses Nat.digits_append_zeroes_append_digits
+        -- m + b^e has digits: (digits of m) ++ (zeros) ++ [1]
+        -- All entries are ≤ 1 since m uses only 0,1 digits
+        sorry
+
+    -- Find base 0 and its largest power
+    have hk_pos : 0 < k := by omega
+    set i₀ : Fin k := ⟨0, hk_pos⟩ with hi₀_def
+    set e₀ := largestExp (d i₀) n with he₀_def
+    set p := (d i₀) ^ e₀ with hp_def
+
+    have hp_le : p ≤ n := pow_largestExp_le (hd i₀) hn
+    have hp_pos : 0 < p := Nat.one_le_pow _ _ (by have := hd i₀; omega : 0 < d i₀)
+
+    -- Apply induction to n - p
+    have hlt : n - p < n := Nat.sub_lt hn hp_pos
+    obtain ⟨a', ha'valid, ha'sum⟩ := ih (n - p) hlt
+
+    -- Case split on whether a' i₀ < p (safe to add p to same base)
+    by_cases ha'_small : a' i₀ < p
+    · -- a' i₀ < p = d^e₀, so adding p doesn't cause digit overflow
+      use fun j => if j = i₀ then a' i₀ + p else a' j
+      constructor
+      · intro j
+        by_cases hj : j = i₀
+        · subst hj
+          simp only [↓reduceIte]
+          rw [hp_def, he₀_def]
+          exact add_pow_valid (d i₀) (a' i₀) e₀ (hd i₀) ha'_small (ha'valid i₀)
+        · simp only [hj, ↓reduceIte]
+          exact ha'valid j
+      · -- Sum equals n
+        have hsum_eq : ∑ j, (if j = i₀ then a' i₀ + p else a' j) = (∑ j, a' j) + p := by
+          -- The LHS adds p to the i₀ term: ∑ (if j = i₀ then a' i₀ + p else a' j) = (∑ a' j) + p
+          calc ∑ j, (if j = i₀ then a' i₀ + p else a' j)
+              = ∑ j, (a' j + if j = i₀ then p else 0) := by
+                  apply Finset.sum_congr rfl; intro j _
+                  by_cases h : j = i₀ <;> simp [h]
+            _ = ∑ j, a' j + ∑ j, (if j = i₀ then p else 0) := Finset.sum_add_distrib
+            _ = ∑ j, a' j + p := by simp [Finset.sum_ite_eq']
+        rw [hsum_eq, ha'sum.symm, Nat.sub_add_cancel hp_le]
+
+    · -- a' i₀ ≥ p: need to add power to a different base
+      -- Since k ≥ 2, we have another base available
+      -- The full proof requires showing we can always find a "free" base
+      -- This uses the capacity lemma and the structure of the problem
+      push_neg at ha'_small
+      -- For now, we admit this complex case
+      -- The key insight: with k ≥ 2 bases and the density condition,
+      -- we can always redistribute powers to avoid conflicts
+      sorry
