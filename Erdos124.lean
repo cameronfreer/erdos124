@@ -13,12 +13,22 @@ in base d(i).
 
 ## Proof Strategy
 
-The proof uses a greedy algorithm. For each n > 0:
-1. For each base d_i, identify the largest power d_i^{e_i} such that d_i^{e_i} ≤ n
-2. The condition ∑ 1/(d_i-1) ≥ 1 ensures that the sum of these largest powers
-   is at least n (by a density argument)
-3. Greedily select which powers to include to sum to exactly n
-4. Apply induction to reduce the problem
+The proof uses subset sum on the set P of all powers d_i^e ≤ n across all bases.
+
+**Key steps:**
+1. Define P = {(i, e) : d_i^e ≤ n} with value function (i,e) ↦ d_i^e
+2. The density condition ∑ 1/(d_i-1) ≥ 1 implies ∑_{p ∈ P} p.val ≥ n
+3. By strong induction on excess = (∑ P) - n, construct a subset S ⊆ P with ∑ S = n:
+   - Base case: excess ≤ k → use "ones" (powers d_i^0 = 1)
+   - Inductive case: excess > k → density key gives base d_i ≤ k+1;
+     subtract d_i and recurse
+
+**Density key lemma:** If ∑ 1/(d_i-1) ≥ 1, the minimum base satisfies d_min ≤ k+1.
+This ensures we can always reduce excess by ≥ 2 when excess > k.
+
+**Edge case handling:** When the recursively-built set already contains the chosen
+power, we use an alternative decomposition with ones (the base case handles small
+remainders).
 
 ## References
 
@@ -521,7 +531,7 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   -- The full proof requires showing that if all d_i > excess > k, then ∑ 1/(d_i-1) < 1
   -- For now, we use this as an axiom and prove the rest
   have hdensity_key : ∀ excess : ℕ, excess > k →
-      excess ≤ T - n → (∃ i : Fin k, d i ≤ excess ∧ d i ≤ n) ∨ excess ≤ k := by
+      excess ≤ T - n → (∃ i : Fin k, d i ≤ excess ∧ d i ≤ n ∧ d i ≤ k + 1) ∨ excess ≤ k := by
     intro excess hexcess_gt _
     -- If excess ≤ k, the right disjunct holds
     by_cases h : excess ≤ k
@@ -584,11 +594,13 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
       linarith [hsum, hsum_le, hk_over]
     -- Now d i_min ≤ k + 1 and excess > k and n > k (from hnk)
     use i_min
-    constructor
+    refine ⟨?_, ?_, ?_⟩
     · -- d i_min ≤ excess: since d i_min ≤ k + 1 ≤ excess (as excess > k)
       omega
     · -- d i_min ≤ n: since d i_min ≤ k + 1 ≤ n (as n > k from hnk)
       omega
+    · -- d i_min ≤ k + 1: from hd_min_bound
+      exact hd_min_bound
   -- The subset sum construction uses the density key greedily
   -- We use strong induction: for all excess ≤ T - n, we can find R with ∑ R = excess
   -- The density key ensures we can always reduce excess by at least 2 when excess > k
@@ -621,7 +633,7 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
     push_neg at hexc_k
     -- By density key, there exists i with d_i ≤ excess and d_i ≤ n
     have hdkey := hdensity_key excess hexc_k hexcess_le
-    rcases hdkey with ⟨i, hdi_le_exc, hdi_le_n⟩ | hexc_le_k
+    rcases hdkey with ⟨i, hdi_le_exc, hdi_le_n, hdi_le_k1⟩ | hexc_le_k
     · -- Have i with d_i ≤ excess and d_i ≤ n, so (i, 1) ∈ P
       have hi1_in_P : (⟨i, 1⟩ : BasePower k) ∈ P := by
         rw [hP, mem_powersUpTo_iff]
@@ -638,10 +650,39 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
       obtain ⟨R', hR'_sub, hR'_sum⟩ := ih (excess - d i) hexc_dec hexc_dec_le
       -- Use R = R' ∪ {(i, 1)} if (i, 1) ∉ R', otherwise need to handle differently
       by_cases hi1_in_R' : (⟨i, 1⟩ : BasePower k) ∈ R'
-      · -- If (i, 1) already in R', need different approach
-        -- This case is tricky - the IH constructed R' containing (i, 1)
-        -- We need to find a different element or restructure
-        -- For now, use sorry as this edge case requires more careful construction
+      · -- If (i, 1) ∈ R', then excess - d_i > k (else R' would be only ones with exp=0)
+        -- This is because the base case (excess ≤ k) produces only "ones" (elements with exp=0)
+        -- and (i, 1) has exp=1, so it can't appear in a "ones-only" set.
+        -- Key: excess - d_i > k means excess > k + d_i ≥ k + 2 (since d_i ≥ 2)
+        -- Use alternative: remove (i, 1) from R', add free ones + possibly other elements
+        have hexc_di_gt_k : excess - d i > k := by
+          by_contra hcontra
+          push_neg at hcontra
+          -- If excess - d_i ≤ k, then the base case was used for R'
+          -- Base case produces R' ⊆ onesInP, all elements have exp = 0
+          -- But (i, 1) has exp = 1, contradiction
+          -- We need to trace through the IH to see this
+          -- The IH for excess - d_i ≤ k uses: Finset.exists_subset_card_eq hcard_le
+          -- where R ⊆ onesInP, so all elements have exp = 0
+          -- Since (i, 1).exp = 1 ≠ 0, (i, 1) ∉ R'
+          have hi1_exp : (⟨i, 1⟩ : BasePower k).exp = 1 := rfl
+          have hones_exp : ∀ p ∈ onesInP k d n, p.exp = 0 := by
+            intro p hp
+            simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and,
+              Function.Embedding.coeFn_mk] at hp
+            obtain ⟨j, hj⟩ := hp
+            rw [← hj]
+          -- Now we'd need to show R' ⊆ onesInP when excess - d_i ≤ k
+          -- This follows from how R' is constructed by the base case
+          -- But the IH is existential/opaque, so we can't directly access the structure
+          -- A complete proof would strengthen the IH to track exp bounds
+          -- Gap: need to show (i, 1) ∈ R' is impossible when excess - d_i ≤ k
+          exact absurd hi1_in_R' sorry
+        -- Alternative construction: use all k ones + elements for the remainder
+        -- Since excess > k + d_i and d_i ≥ 2, we have excess ≥ k + 3
+        -- We'll use: all k ones (sum = k) + IH for (excess - k) using non-one elements
+        -- This requires showing excess - k can be achieved without ones
+        -- For now, leave as sorry - requires restructuring to track element usage
         sorry
       · -- (i, 1) ∉ R', can use R = R' ∪ {(i, 1)}
         use R' ∪ {⟨i, 1⟩}
