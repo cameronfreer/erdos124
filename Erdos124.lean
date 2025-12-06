@@ -777,25 +777,24 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
                   have hremainj'_lt : n - d j' < n := Nat.sub_lt (by omega) (by rw [hj'_eq]; omega)
                   obtain ⟨Sj', hSj'_bound, hSj'_sum, _⟩ := ih (n - d j') hremainj'_lt hremainj'_pos
                   by_cases hj'1_in : (⟨j', 1⟩ : BasePower k) ∈ Sj'
-                  · -- Both (j', 1) ∈ Sj' and we can't easily add more
-                    -- Use exfalso or alternative construction
-                    -- Since Sj' sums to n - d j' and (j', 1) ∈ Sj' with value d j',
-                    -- n - d j' ≥ d j', so n ≥ 2 * d j' = 2 * d i₀
-                    -- Combined with hpow2 : d i₀² ≤ n, we have room
-                    -- For simplicity, use (j', 2) approach since d j'² ≤ n
-                    have hj'pow2 : d j' ^ 2 ≤ n := by rw [hj'_eq]; exact hpow2
-                    refine ⟨{⟨j', 2⟩}, ?_, ?_, ?_⟩
-                    · intro p hp; simp at hp; simp [hp, BasePower.val]; exact hj'pow2
-                    · simp [BasePower.val]
-                      -- Need n = d j' ^ 2. We know:
-                      -- Sj' sums to n - d j' and contains (j', 1) with value d j'
-                      -- So n - d j' ≥ d j', giving n ≥ 2 * d j'
-                      -- Also S'' sums to n - d j'² and contains both (i₀, 2) and (j', 2)
-                      -- So n - d j'² ≥ 2 * d j'², giving n ≥ 3 * d j'²
-                      -- This contradicts if n = d j'². So this case might not be reachable,
-                      -- but we need to handle it anyway. Use sorry for now.
+                  · -- (j', 1) ∈ Sj', try adding (i₀, 1) instead
+                    -- Sj' sums to n - d j' = n - d i₀ (since d j' = d i₀)
+                    by_cases hi₀1_in_Sj' : (⟨i₀, 1⟩ : BasePower k) ∈ Sj'
+                    · -- Both (j', 1) and (i₀, 1) are in Sj'
+                      -- Complex nested case - simplified to sorry for now
+                      -- Requires careful recursion depth tracking
                       sorry
-                    · intro hcontra; have := hd j'; nlinarith
+                    · -- (i₀, 1) ∉ Sj', add it
+                      refine ⟨insert ⟨i₀, 1⟩ Sj', ?_, ?_, ?_⟩
+                      · intro p hp
+                        rw [Finset.mem_insert] at hp
+                        rcases hp with rfl | hp
+                        · simp [BasePower.val]; rw [hj'_eq] at hdj'_lt_n; exact le_of_lt hdj'_lt_n
+                        · calc p.val d ≤ n - d j' := hSj'_bound p hp
+                            _ ≤ n := Nat.sub_le _ _
+                      · rw [Finset.sum_insert hi₀1_in_Sj', hSj'_sum]
+                        simp only [BasePower.val, pow_one, hj'_eq]; omega
+                      · intro hcontra; omega
                   · refine ⟨insert ⟨j', 1⟩ Sj', ?_, ?_, ?_⟩
                     · intro p hp
                       rw [Finset.mem_insert] at hp
@@ -841,11 +840,29 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
             omega
 
       · -- d i₀² > n, can't use (i₀, 2)
-        -- EDGE CASE: (i₀, 1) ∈ S' but we can't use (i₀, 2) since d i₀² > n
         -- Use density_small_or_dup to find an alternative base
-
-        -- This case requires careful analysis of base switching
-        sorry
+        push_neg at hpow2
+        rcases density_small_or_dup hd hk hsum i₀ hi₀ hi₀_min with hsmall | ⟨j', hj'_ne, hj'_eq⟩
+        · -- Case: d i₀ ≤ k - simplified to sorry
+          sorry
+        · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
+          -- Use (j', 1) instead of needing (i₀, 2)
+          have hj'_le_n : d j' ≤ n := by rw [hj'_eq]; exact hmin_le_n
+          -- Try adding (j', 1) to S' if not present
+          by_cases hj'1_in_S' : (⟨j', 1⟩ : BasePower k) ∈ S'
+          · -- Both (i₀, 1) and (j', 1) in S' - simplified to sorry
+            sorry
+          · -- (j', 1) ∉ S', can add it
+            refine ⟨insert ⟨j', 1⟩ S', ?_, ?_, ?_⟩
+            · intro p hp
+              rw [Finset.mem_insert] at hp
+              rcases hp with rfl | hp
+              · simp [BasePower.val, hj'_eq]; exact hmin_le_n
+              · calc p.val d ≤ n - d i₀ := hS'_bound p hp
+                  _ ≤ n := Nat.sub_le _ _
+            · rw [Finset.sum_insert hj'1_in_S', hS'_sum]
+              simp only [BasePower.val, pow_one, hj'_eq]; omega
+            · intro hcontra; omega
 
 /-  COMMENTED OUT - Complex edge case handling has issues
     Simplified to sorry above for now
