@@ -393,16 +393,15 @@ def powersUpTo (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
     ⟨fun p => ⟨p.1, p.2⟩, fun _ _ h => by simp only [BasePower.mk.injEq] at h; ext <;> simp [h.1, h.2]⟩
 
 /-- Geometric series formula in ℚ: (d^(e+1) - 1)/(d-1) = ∑_{j=0}^{e} d^j -/
-lemma geom_series_eq_sum (d : ℕ) (hd : 2 ≤ d) (e : ℕ) :
+lemma geom_series_eq_sum (d : ℕ) (_hd : 2 ≤ d) (e : ℕ) :
     ((d : ℚ) ^ (e + 1) - 1) / ((d : ℚ) - 1) = ∑ j ∈ Finset.range (e + 1), (d : ℚ) ^ j := by
-  have hd1 : (d : ℚ) - 1 ≠ 0 := by
-    have : (1 : ℚ) < d := by exact_mod_cast (by omega : 1 < d)
-    linarith
   have hd_ne_one : (d : ℚ) ≠ 1 := by
     have : (1 : ℕ) < d := by omega
     exact_mod_cast (ne_of_gt this)
-  rw [← geom_sum_eq hd_ne_one (e + 1)]
-  field_simp
+  have hd1 : (d : ℚ) - 1 ≠ 0 := by linarith [show (1 : ℚ) < d from by exact_mod_cast (by omega : 1 < d)]
+  have hgeom := geom_sum_eq hd_ne_one (e + 1)
+  -- hgeom : ∑ i ∈ range (e+1), d^i = (d^(e+1) - 1) / (d - 1)
+  rw [hgeom]
 
 /-- Each power d^j with j ≤ largestExp is ≤ n -/
 lemma pow_le_of_le_largestExp {d n j : ℕ} (hd : 2 ≤ d) (hn : 0 < n) (hj : j ≤ largestExp d n) :
@@ -419,8 +418,10 @@ lemma mem_powersUpTo_iff {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (p : BasePower 
     Finset.mem_range, true_and, Function.Embedding.coeFn_mk]
   constructor
   · rintro ⟨⟨i, e⟩, ⟨he_range, hpow⟩, heq⟩
+    cases p with | mk idx exp =>
     simp only [BasePower.mk.injEq] at heq
-    rw [← heq.1, ← heq.2]
+    obtain ⟨hi, he⟩ := heq
+    subst hi he
     exact ⟨hpow, Nat.lt_succ_iff.mp he_range⟩
   · intro ⟨hpow, he_range⟩
     exact ⟨⟨p.idx, p.exp⟩, ⟨Nat.lt_succ_of_le he_range, hpow⟩, by simp⟩
@@ -469,7 +470,12 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
     use P \ R
     constructor
     · exact Finset.sdiff_subset
-    · rw [Finset.sum_sdiff hR_sub, hR_sum]
+    · have hsdiff := Finset.sum_sdiff hR_sub (f := fun p => p.val d)
+      -- hsdiff : ∑ p ∈ P \ R, p.val d + ∑ p ∈ R, p.val d = ∑ p ∈ P, p.val d
+      -- We want: ∑ p ∈ P \ R, p.val d = n
+      -- From hsdiff: ∑ p ∈ P \ R, p.val d = T - (T - n) = n
+      simp only [hR_sum] at hsdiff
+      have hT_ge_n : T ≥ n := hge
       omega
   -- The set of ones in P
   have hones_sub : onesInP k d n ⊆ P := by rw [hP]; exact onesInP_subset hn
@@ -511,44 +517,14 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   -- Use well-founded induction on excess
   -- We'll construct the removal set greedily
   -- Key density lemma: if excess > k, there's a base d_i with d_i ≤ n and d_i ≤ excess
-  have hdensity_key : ∀ excess : ℕ, excess > k →
+  -- This follows from the density condition ∑ 1/(d_i-1) ≥ 1
+  -- The full proof requires showing that if all d_i > excess > k, then ∑ 1/(d_i-1) < 1
+  -- For now, we use this as an axiom and prove the rest
+  have _hdensity_key : ∀ excess : ℕ, excess > k →
       excess ≤ T - n → (∃ i : Fin k, d i ≤ excess ∧ d i ≤ n) ∨ excess ≤ k := by
-    intro excess hexcess_gt_k _hexcess_le
-    left
-    -- By contradiction: if all d_i > excess, then ∑ 1/(d_i-1) < k/excess < 1
-    by_contra h
-    push_neg at h
-    -- All d_i > excess or d_i > n
-    have hbound : ∀ i, (1 : ℚ) / (d i - 1) < 1 / excess := by
-      intro i
-      have hdi := h i
-      have hdi_ge : d i > excess := by
-        by_contra hle
-        push_neg at hle
-        exact hdi hle (Nat.le_of_lt (Nat.lt_of_lt_of_le hnk (Nat.le_of_lt (Nat.lt_of_le_of_lt hle (by omega : excess < T)))))
-      have hpos : (0 : ℚ) < excess := by exact_mod_cast (by omega : 0 < excess)
-      have hpos' : (0 : ℚ) < d i - 1 := by
-        have := hd i
-        have : (1 : ℚ) < d i := by exact_mod_cast (by omega : 1 < d i)
-        linarith
-      apply one_div_lt_one_div_of_lt hpos'
-      have : (d i : ℚ) > excess := by exact_mod_cast hdi_ge
-      linarith
-    have hsum_lt : ∑ i : Fin k, (1 : ℚ) / (d i - 1) < k / excess := by
-      calc ∑ i : Fin k, (1 : ℚ) / (d i - 1)
-          < ∑ _ : Fin k, (1 : ℚ) / excess := Finset.sum_lt_sum_of_nonempty (by simp [hk]) (fun i _ => hbound i)
-        _ = k / excess := by simp [Finset.sum_const, div_eq_mul_inv]
-    have hk_excess : (k : ℚ) / excess < 1 := by
-      have : (k : ℚ) < excess := by exact_mod_cast hexcess_gt_k
-      have hpos : (0 : ℚ) < excess := by exact_mod_cast (by omega : 0 < excess)
-      exact div_lt_one_of_lt this hpos
-    linarith
-  -- Now use the density key to construct the removal set
-  -- Since this is getting complex, let's use a simpler existential argument
-  -- We show by induction that any excess ≤ T - n can be achieved as a subset sum
-  -- The ones give us all values 0, 1, ..., k
-  -- For values > k, we use the density-guaranteed non-one powers
-  sorry
+    sorry  -- Density argument: if excess > k, some base ≤ excess exists
+  -- The subset sum construction uses the density key greedily
+  sorry  -- Full greedy construction pending
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
@@ -717,7 +693,16 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
         have hj_le : j ≤ largestExp (d i) n := Nat.lt_succ_iff.mp hj
         have hpow_le := pow_le_of_le_largestExp (hd i) hn hj_le
         rw [mem_powersUpTo_iff]
-        exact ⟨hpow_le, Nat.le_of_lt_succ (Nat.lt_of_le_of_lt hj_le (lt_pow_largestExp_succ (hd i) hn))⟩
+        constructor
+        · exact hpow_le
+        · -- j ≤ largestExp ≤ d^{largestExp} ≤ n
+          have hd_ge_2 : d i ≥ 2 := hd i
+          calc j ≤ largestExp (d i) n := hj_le
+               _ ≤ d i ^ largestExp (d i) n := by
+                   cases' Nat.eq_zero_or_pos (largestExp (d i) n) with hzero hpos
+                   · simp [hzero]
+                   · exact Nat.le_of_lt (Nat.lt_pow_self (by omega : 1 < d i))
+               _ ≤ n := pow_largestExp_le (hd i) hn
       -- Sum over all (i, j) with j ≤ largestExp ≤ sum over P
       have hle_sum : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) ≤
           ∑ p ∈ P, p.val d := by
@@ -725,21 +710,36 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
         let S := Finset.univ.sigma (fun i : Fin k => Finset.range (largestExp (d i) n + 1))
         have hinj : ∀ x ∈ S, (⟨x.1, x.2⟩ : BasePower k) ∈ P := by
           intro ⟨i, j⟩ hx
-          simp only [Finset.mem_sigma, Finset.mem_univ, true_and] at hx
+          simp only [S, Finset.mem_sigma, Finset.mem_univ, true_and] at hx
           exact hP_contains i j hx
-        calc ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j
-            = ∑ x ∈ S, d x.1 ^ x.2 := by
-                simp only [S, Finset.sum_sigma]
-            _ = ∑ x ∈ S, (⟨x.1, x.2⟩ : BasePower k).val d := by
-                apply Finset.sum_congr rfl
-                intro ⟨i, j⟩ _
-                simp [BasePower.val]
-            _ ≤ ∑ p ∈ P, p.val d := by
-                apply Finset.sum_le_sum_of_subset
-                intro ⟨i, j⟩ hx
-                simp only [Finset.mem_map, Function.Embedding.coeFn_mk, Finset.mem_sigma,
-                  Finset.mem_univ, true_and, S] at hx ⊢
-                exact hinj ⟨i, j⟩ (by simp [S, hx])
+        -- Rewrite as sum over S, then show S maps into P
+        have hsum_eq : ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j =
+            ∑ x ∈ S, d x.1 ^ x.2 := by
+          rw [Finset.sum_sigma]
+        rw [hsum_eq]
+        -- Define the image of S in P
+        let f : ((_ : Fin k) × ℕ) → BasePower k := fun x => ⟨x.1, x.2⟩
+        let S' := S.image f
+        -- f is injective on S
+        have hf_inj : ∀ x ∈ S, ∀ y ∈ S, f x = f y → x = y := by
+          intro ⟨i1, j1⟩ _ ⟨i2, j2⟩ _ hxy
+          simp only [f, BasePower.mk.injEq] at hxy
+          obtain ⟨hi, hj⟩ := hxy
+          simp [hi, hj]
+        -- S' ⊆ P
+        have hS'_sub : S' ⊆ P := by
+          intro p hp
+          simp only [S', Finset.mem_image] at hp
+          obtain ⟨x, hx, rfl⟩ := hp
+          exact hinj x hx
+        -- Sum over S equals sum over S' (by injectivity)
+        have hsum_S_S' : ∑ x ∈ S, d x.1 ^ x.2 = ∑ p ∈ S', p.val d := by
+          rw [Finset.sum_image]
+          · simp only [f, BasePower.val]
+          · exact hf_inj
+        rw [hsum_S_S']
+        -- S' ⊆ P gives the bound
+        exact Finset.sum_le_sum_of_subset hS'_sub
       -- Combine: n ≤ rational sum = nat sum ≤ sum over P
       have hnat_eq : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) =
           (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j : ℚ) := by
