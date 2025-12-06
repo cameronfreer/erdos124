@@ -313,8 +313,31 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
     exact erdos_124_with_base2 hd i₀ hi₀ n
   -- The harder case: no base equals 2 (all bases ≥ 3)
   -- In this case, the density condition ∑ 1/(d_i-1) ≥ 1 requires multiple bases.
-  -- The proof uses a greedy algorithm on the pool of available powers.
   push_neg at h2
+  -- Key observation: since all d_i ≥ 3, we have 1/(d_i - 1) ≤ 1/2 for all i.
+  -- To achieve ∑ 1/(d_i - 1) ≥ 1, we need at least 2 bases.
+  have hk : 2 ≤ k := by
+    by_contra hk'
+    push_neg at hk'
+    interval_cases k
+    · -- k = 0: empty sum = 0 < 1, contradiction with hsum
+      simp only [Finset.univ_eq_empty, Finset.sum_empty] at hsum
+      linarith
+    · -- k = 1: single base d 0 ≥ 3, so 1/(d 0 - 1) ≤ 1/2 < 1
+      simp only [Finset.univ_unique, Fin.default_eq_zero, Finset.sum_singleton] at hsum
+      have hd0 : d 0 ≥ 3 := by
+        have := hd 0
+        have := h2 0
+        omega
+      have hge2 : (2 : ℚ) ≤ (d 0 : ℚ) - 1 := by
+        have : (3 : ℕ) ≤ d 0 := hd0
+        have h1 : (3 : ℚ) ≤ (d 0 : ℚ) := by exact_mod_cast this
+        linarith
+      have hpos : (0 : ℚ) < (d 0 : ℚ) - 1 := by linarith
+      have : (1 : ℚ) / (d 0 - 1) ≤ 1 / 2 := by
+        apply one_div_le_one_div_of_le (by linarith : (0 : ℚ) < 2) hge2
+      linarith
+  -- Now we have k ≥ 2 bases, each providing d_i^0 = 1
   -- Strong induction on n
   induction n using Nat.strong_induction_on with
   | _ n ih =>
@@ -326,18 +349,24 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
       · simp [hn]
 
     -- For n > 0, we use the capacity lemma which shows there's enough room
-    have hcap := capacity_lemma hd hsum hn
+    have _hcap := capacity_lemma hd hsum hn
 
-    -- When no base is 2, the proof requires a more sophisticated combinatorial argument.
-    -- The key insight is:
-    -- 1. Each base d_i ≥ 3 contributes 1/(d_i - 1) ≤ 1/2 to the density sum
-    -- 2. To reach sum ≥ 1, we need at least 2 bases
-    -- 3. The interleaving of powers from different bases provides enough coverage
+    -- Case split on whether n ≤ k (can use just ones) or n > k (need larger powers)
+    -- With k ≥ 2 bases, we have at least 2 ones available.
+    -- The proof uses a greedy construction with careful tracking.
     --
-    -- The greedy algorithm works as follows:
-    -- - Consider all powers d_i^j where j ≤ largestExp(d_i, n)
-    -- - Repeatedly select the largest available power ≤ remaining
-    -- - The density condition ensures we can always make progress
+    -- Key insight: Each base d_i ≥ 3 has powers 1, d_i, d_i^2, ...
+    -- The greedy algorithm selects powers in decreasing order:
+    -- 1. Start with remaining = n
+    -- 2. Find largest unused power p ≤ remaining
+    -- 3. Use p, set remaining := remaining - p
+    -- 4. Repeat until remaining = 0
     --
-    -- This requires formalizing the well-foundedness of the greedy process.
+    -- The density condition ensures this always terminates because:
+    -- - The total capacity of all available powers exceeds n
+    -- - At each step, we can always find a power ≤ remaining
+    --   (worst case: use a 1 from an unused base)
+    --
+    -- Full formalization requires defining the greedy selection and proving
+    -- that it never runs out of valid choices. This is left for future work.
     sorry
