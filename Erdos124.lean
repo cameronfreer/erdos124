@@ -779,7 +779,7 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
                 -- Actually S_rest ⊆ ones conceptually. Union with ones gives sum ≥ n - k + k = n
                 -- But might exceed n. Need exact count.
                 -- For now, use sorry - this case needs more careful set manipulation
-                sorry
+                grind +suggestions
               · -- n - k > k, so S_rest might use higher powers
                 -- Check if S_rest intersects ones
                 -- If disjoint, union gives sum = k + (n - k) = n ✓
@@ -800,7 +800,7 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
                   · intro hcontra; omega
                 · -- Not disjoint - some ones are in S_rest
                   -- Need more careful construction
-                  grind +suggestions
+                  grind
             · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
               -- (j', 2) has value d j'² = d i₀², use it instead
               by_cases hj'2_in : (⟨j', 2⟩ : BasePower k) ∈ S''
@@ -825,7 +825,7 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
                     · -- Both (j', 1) and (i₀, 1) are in Sj'
                       -- Complex nested case - simplified to sorry for now
                       -- Requires careful recursion depth tracking
-                      sorry
+                      grind +suggestions
                     · -- (i₀, 1) ∉ Sj', add it
                       refine ⟨insert ⟨i₀, 1⟩ Sj', ?_, ?_, ?_⟩
                       · intro p hp
@@ -919,7 +919,7 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
                 by_cases hj1_in_Sj : (⟨j, 1⟩ : BasePower k) ∈ Sj
                 · -- (j, 1) ∈ Sj: both bases have conflicts
                   -- Deep edge case - try grind
-                  grind +suggestions
+                  grind
                 · refine ⟨insert ⟨j, 1⟩ Sj, ?_, ?_, ?_⟩
                   · intro p hp
                     rw [Finset.mem_insert] at hp
@@ -940,14 +940,14 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
               -- With d j > n ≥ 2 * d i₀ and d j ≥ d i₀, need d j > 2 * d i₀
               -- Density: ∑ 1/(d i - 1) ≥ 1. If most bases are huge, density fails.
               -- For now mark as sorry - may be vacuous
-              sorry
+              grind +suggestions
         · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
           -- Use (j', 1) instead of needing (i₀, 2)
           have hj'_le_n : d j' ≤ n := by rw [hj'_eq]; exact hmin_le_n
           -- Try adding (j', 1) to S' if not present
           by_cases hj'1_in_S' : (⟨j', 1⟩ : BasePower k) ∈ S'
           · -- Both (i₀, 1) and (j', 1) in S' - simplified to sorry
-            sorry
+            grind +suggestions
           · -- (j', 1) ∉ S', can add it
             refine ⟨insert ⟨j', 1⟩ S', ?_, ?_, ?_⟩
             · intro p hp
