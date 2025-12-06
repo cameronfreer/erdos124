@@ -396,9 +396,12 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
       by_cases hm_zero : m = 0
       · simp only [hm_zero, zero_add]
         exact usesOnlyZeroOne_pow hb e
-      · -- Technical: uses Nat.digits_append_zeroes_append_digits
-        -- m + b^e has digits: (digits of m) ++ (zeros) ++ [1]
-        -- All entries are ≤ 1 since m uses only 0,1 digits
+      · -- m > 0 and m < b^e
+        -- Key insight: m < b^e implies digits of m have length ≤ e
+        -- So m + b^e = ofDigits b (digits(m) ++ zeros ++ [1])
+        -- All digits remain ≤ 1 since m uses only 0,1 digits
+        -- Uses: Nat.digits_append_zeroes_append_digits h1 (for b > 1)
+        -- digits b m ++ replicate k 0 ++ digits b 1 = digits b (m + b^(len+k))
         sorry
 
     -- Find base 0 and its largest power
