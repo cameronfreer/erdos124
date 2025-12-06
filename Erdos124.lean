@@ -660,19 +660,49 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   have hdi₀_pos : 0 < d i₀ := by have := hd i₀; omega
   have hremain : n - d i₀ < n := Nat.sub_lt (by omega : 0 < n) hdi₀_pos
 
-  -- The remaining target n - d i₀ needs to be achievable from P \ {(i₀, 1)}
-  -- But we need the sum constraint to hold for the remaining set
+  -- The remaining target n - d i₀ can be handled in two cases:
+  -- Case 2a: n - d i₀ ≤ k (can use ones from P)
+  -- Case 2b: n - d i₀ > k (need more non-ones)
 
-  -- For now, we use sorry - the full proof requires careful tracking of:
-  -- 1. Which powers are still available
-  -- 2. That the remaining sum is still ≥ remaining target
-  -- 3. That we can recursively solve
+  by_cases hremain_le_k : n - d i₀ ≤ k
+  · -- Case 2a: remainder ≤ k, use ones to fill
+    -- We need: n = d i₀ + (n - d i₀), and we use:
+    -- - (i₀, 1) with value d i₀
+    -- - (n - d i₀) ones with value 1 each
+    have hfill_ones : n - d i₀ ≤ ones.card := by rw [hones_card]; exact hremain_le_k
+    obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq hfill_ones
+    -- Build the final set: {(i₀, 1)} ∪ T
+    refine ⟨insert ⟨i₀, 1⟩ T, ?_, ?_⟩
+    · -- Subset proof
+      intro p hp
+      rw [Finset.mem_insert] at hp
+      rcases hp with rfl | hp
+      · exact hp_in_P
+      · exact hones_sub (hT_sub hp)
+    · -- Sum equals n
+      have hT_sum : ∑ x ∈ T, x.val d = n - d i₀ := by
+        have hT_all_ones : ∀ x ∈ T, x.val d = 1 := fun x hx => hones_val x (hT_sub hx)
+        rw [Finset.sum_eq_card_nsmul hT_all_ones, hT_card]
+        simp
+      have hnotinT : (⟨i₀, 1⟩ : BasePower k) ∉ T := by
+        intro h
+        have := hones_val ⟨i₀, 1⟩ (hT_sub h)
+        simp [BasePower.val] at this
+        have := hd i₀
+        omega
+      rw [Finset.sum_insert hnotinT, hT_sum]
+      simp only [BasePower.val, pow_one]
+      omega
 
-  -- The key insight: we're not just doing general subset sum - we're using
-  -- the specific structure where:
-  -- - k ones give us fine-grained control for targets ≤ k
-  -- - Powers d_i give us "steps" of size ≥ 2
-  -- - The density condition ensures we always have a usable power
+  -- Case 2b: remainder > k, need more non-ones
+  push_neg at hremain_le_k
+
+  -- This is where the proof gets more involved:
+  -- We need to find additional powers to sum to n - d i₀
+  -- The key is that we can use the same greedy approach recursively
+
+  -- For now, leave as sorry with documentation
+  -- The full proof requires well-founded induction on (n - k) or similar
 
   sorry
 
