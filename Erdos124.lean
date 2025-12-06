@@ -569,25 +569,111 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   -- Induction on the sum minus n (the excess)
   have hexcess_bound : ∑ p ∈ P, p.val d - n < ∑ p ∈ P, p.val d + 1 := by omega
 
-  -- Use strong induction on the target value
-  -- Start with simpler cases
+  -- Use strong induction on n (with fixed P)
+  -- The key: for any target n with k < n ≤ ∑ P, find subset summing to n
+
+  -- For n > k, we construct the subset greedily:
+  -- 1. If n ≤ k: use n ones
+  -- 2. If n > k: find power p ≤ n, use it, and solve for n - p recursively
+
+  -- Since we have hnk : k < n, the n ≤ k case is handled by omega
   by_cases hn_le_k : n ≤ k
-  · -- n ≤ k: contradicts hnk (k < n)
-    omega
+  · omega
   push_neg at hn_le_k
-  -- n > k: use the structure of powers
 
-  -- For n > k, we need to apply Brown's lemma
-  -- The key insight: with k ones and min base ≤ k + 1, we can achieve any target
+  -- The density condition gives min(d) ≤ k + 1
+  obtain ⟨i₀, hi₀⟩ := hmin_base
 
-  -- The proof uses Brown's complete sequence property:
-  -- 1. List all powers starting with the k ones (value 1 each)
-  -- 2. Then list remaining powers in nondecreasing order
-  -- 3. Verify the step condition: each element ≤ 1 + sum of previous elements
-  -- 4. By Brown's lemma, any value ≤ total sum is achievable
+  -- For n > k, use a greedy construction
+  -- Key: since min(d) ≤ k + 1 and n > k, we have min(d) ≤ n
+  have hmin_le_n : d i₀ ≤ n := le_trans hi₀ (by omega : k + 1 ≤ n)
 
-  -- For now, leave as sorry - the key is that the flawed cross-base redistribution
-  -- is completely removed, and the correct Brown-based approach is outlined
+  -- The power (i₀, 1) has value d i₀ and is in P
+  have hp_in_P : (⟨i₀, 1⟩ : BasePower k) ∈ P := by
+    rw [hP, mem_powersUpTo_iff]
+    simp only [pow_one]
+    constructor
+    · exact hmin_le_n
+    · have hdi₀ : 2 ≤ d i₀ := hd i₀
+      calc 1 ≤ d i₀ := by omega
+           _ ≤ n := hmin_le_n
+
+  -- For the greedy algorithm, we subtract d i₀ and recurse
+  -- But we need to ensure we don't reuse elements
+
+  -- Alternative: use a direct construction
+  -- For n in range (k+1, ..., ∑ P), show we can achieve it
+
+  -- Use strong induction on the "excess" = ∑ P - n
+  -- When excess = 0, use all of P
+  -- When excess > 0, remove one element and continue
+
+  -- Actually, let's use a different approach based on the structure:
+  -- All values from 0 to k are achievable using ones
+  -- For n > k, we use the greedy algorithm on non-ones
+
+  -- The key lemma: for n > k, there exists a power p ≤ n in P \ ones
+  -- such that n - p ≤ ∑ (P \ {p}), so we can recurse
+
+  -- For now, we use a sorry with documentation of the correct approach
+  -- The key is that:
+  -- 1. We have k ones (value 1 each)
+  -- 2. min non-one = d i₀ ≤ k + 1 ≤ n (since n > k)
+  -- 3. Use greedy: pick largest power ≤ n, subtract, repeat
+  -- 4. When remainder ≤ k, fill with ones
+
+  -- This requires careful tracking of which powers are still available
+  -- and proving that the remainder is always achievable
+
+  -- PROOF SKETCH (to be formalized):
+  -- Let r = n. While r > k:
+  --   Pick p = largest power in remaining set with p.val ≤ r
+  --   Add p to solution, set r := r - p.val
+  -- Fill remaining r with r ones
+  --
+  -- This works because:
+  -- - Initially, d i₀ ≤ k + 1 ≤ n, so we can always start
+  -- - At each step, if r > k, then r ≥ k + 1
+  -- - Since we have d i₀ ≤ k + 1 ≤ r, we can always find a usable power
+  -- - The greedy choice ensures we make progress (r decreases by at least 2)
+  -- - When r ≤ k, we use ones
+
+  -- We proceed by strong induction on n, showing we can build the subset
+  -- The key is that we have hp_in_P : power (i₀, 1) is in P with value d i₀ ≤ n
+
+  -- Case: n = d i₀ (can use just one power)
+  by_cases hn_eq : n = d i₀
+  · refine ⟨{⟨i₀, 1⟩}, ?_, ?_⟩
+    · intro p hp
+      simp at hp
+      rw [hp]
+      exact hp_in_P
+    · simp [BasePower.val, hn_eq]
+
+  -- Case: n > d i₀ (need to combine with more powers or ones)
+  push_neg at hn_eq
+
+  -- Use (i₀, 1) and recurse on n - d i₀
+  have hn_gt : n > d i₀ := Nat.lt_of_le_of_ne hmin_le_n (Ne.symm hn_eq)
+
+  -- Compute remaining target
+  have hdi₀_pos : 0 < d i₀ := by have := hd i₀; omega
+  have hremain : n - d i₀ < n := Nat.sub_lt (by omega : 0 < n) hdi₀_pos
+
+  -- The remaining target n - d i₀ needs to be achievable from P \ {(i₀, 1)}
+  -- But we need the sum constraint to hold for the remaining set
+
+  -- For now, we use sorry - the full proof requires careful tracking of:
+  -- 1. Which powers are still available
+  -- 2. That the remaining sum is still ≥ remaining target
+  -- 3. That we can recursively solve
+
+  -- The key insight: we're not just doing general subset sum - we're using
+  -- the specific structure where:
+  -- - k ones give us fine-grained control for targets ≤ k
+  -- - Powers d_i give us "steps" of size ≥ 2
+  -- - The density condition ensures we always have a usable power
+
   sorry
 
 /-- The sum of all powers up to M -/
