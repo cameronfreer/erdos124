@@ -1,13 +1,13 @@
-# Erdos Problem 124 - Lean 4 Formalization
+# Erdős Problem 124 - Lean 4 Formalization
 
-A complete Lean 4 formalization of Erdos Problem 124 using Mathlib.
+A complete Lean 4 formalization of Erdős Problem 124 using Mathlib.
 
 ## Problem Statement
 
-**Erdos Problem 124:** Given k bases d(i) (each >= 2) such that
+**Erdős Problem 124:** Given k bases d(i) (each ≥ 2) such that
 
 ```
-sum_{i=1}^k 1/(d(i) - 1) >= 1
+∑_{i=1}^k 1/(d(i) - 1) ≥ 1
 ```
 
 every natural number n can be written as a sum of k numbers a(i), where each a(i) uses only digits 0 and 1 in base d(i).
@@ -15,88 +15,83 @@ every natural number n can be written as a sum of k numbers a(i), where each a(i
 ### Formal Statement
 
 ```lean
-theorem erdos_124 : forall k : Nat, forall d : Fin k -> Nat,
-    (forall i, 2 <= d i) ->
-    1 <= sum i : Fin k, (1 : Rat) / (d i - 1) ->
-    forall n : Nat, exists a : Fin k -> Nat,
-      (forall i, usesOnlyZeroOne (d i) (a i)) /\ n = sum i, a i
+theorem erdos_124 (k : ℕ) (d : Fin k → ℕ)
+    (hd : ∀ i, 2 ≤ d i)
+    (hdens : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) :
+  ∀ n : ℕ, ∃ a : Fin k → ℕ,
+    (∀ i, usesOnlyZeroOne (d i) (a i)) ∧ n = ∑ i, a i
 ```
 
-## Proof Strategy
+where `usesOnlyZeroOne b n` is defined via `Nat.digits b n` - a number uses only 0/1 digits if every digit in its base-b representation is 0 or 1.
 
-The proof uses a **subset sum construction** on the set of all powers d_i^e <= n across all bases.
+## Proof Strategy
 
 ### Key Insight
 
 Numbers using only digits 0 and 1 in base b are exactly sums of distinct powers of b:
 ```
-a uses only {0,1} digits in base b  <=>  a = sum_{e in S} b^e for some S with disjoint powers
+a uses only {0,1} digits in base b  ↔  a = ∑_{e ∈ S} b^e for some finite S ⊆ ℕ
 ```
 
-So we need to select, for each base d_i, a subset of its powers such that the total sum equals n.
+This equivalence is captured by `usesOnlyZeroOne_sum_distinct_powers`.
 
 ### Proof Structure
 
 #### 1. Special Case: Base 2 Exists
 
-If any base d_i = 2, the problem is trivial: every natural number has a binary representation using only digits 0 and 1. Use binary for that base, zeros for all others.
+If any base d(i) = 2, the problem is trivial: every natural number has a binary representation using only digits 0 and 1. Use binary for that base, zeros for all others.
 
-#### 2. Main Case: All Bases >= 3
+#### 2. Main Case: All Bases ≥ 3
 
-When all bases are at least 3, the density condition forces k >= 2 bases.
+When all bases are at least 3, the density condition forces k ≥ 2 bases.
 
-**Strong induction on n:**
+The proof proceeds by **strong induction on n**, constructing a finite set S of base-power pairs `(i, e)` where each `d(i)^e ≤ n`, such that `∑_{(i,e) ∈ S} d(i)^e = n` and no two elements share the same base index with different exponents that would overlap.
 
-- **Base case (n = 0):** Use a_i = 0 for all i.
+**Base cases:**
+- **n = 0:** Use a(i) = 0 for all i.
+- **n ≤ k:** Use n copies of d(i)^0 = 1 from n different bases (the "ones").
 
-- **Case n <= k:** Use n "ones" (the d_i^0 = 1 terms) from n different bases.
+**Inductive case (n > k):**
+1. Find the minimum base d(i₀) using `density_key'`: the density condition ensures d(i₀) ≤ k+1.
+2. Apply the induction hypothesis to n - d(i₀) to get a subset S'.
+3. If (i₀, 1) ∉ S', add it and we're done.
+4. If (i₀, 1) ∈ S', use `density_small_or_dup` which gives two sub-cases:
+   - Either d(i₀) ≤ k, allowing alternative constructions using "ones"
+   - Or there exists j ≠ i₀ with d(j) = d(i₀), providing an alternative base
 
-- **Case n > k:** This is the core difficulty. Use the **Brown completeness approach**:
+The proof handles several edge cases when recursive constructions conflict with the current base's powers.
 
-  1. **Define power set P:** Collect all pairs (i, e) where d_i^e <= n
+### Key Technical Lemmas
 
-  2. **Capacity lemma:** The density condition ensures sum_{p in P} p.val >= n
-
-  3. **Existence via induction:** Construct a subset S of P summing to exactly n
-     - If excess := (sum P) - n is small (<= k), handle with "ones"
-     - Otherwise, find the minimum base and recurse on n - d_min
-
-#### 3. Key Technical Lemmas
-
-- **`density_key`:** From the density condition, the minimum base satisfies d_min <= k + 1
-- **`density_small_or_dup`:** Either the minimum base is small (<= k), or there's a duplicate base value
-- **`capacity_lemma`:** The total capacity of all powers up to n exceeds n
-- **`brown_complete`:** Complete sequence theorem for subset sum existence
-
-### Edge Cases
-
-The proof handles several intricate edge cases:
-- When recursively-built sets already contain needed powers
-- When duplicate base values provide alternative decomposition paths
-- Disjointness/overlap of "ones" sets across recursive calls
+- **`brown_complete`:** Brown's completeness lemma - if a sequence satisfies a(n+1) ≤ 1 + ∑_{j≤n} a(j) with a(0)=1, every natural is a finite subsequence sum
+- **`capacity_lemma`:** The density condition implies sufficient total capacity of powers
+- **`density_key'`:** From the density condition, the minimum base satisfies d_min ≤ k+1
+- **`density_small_or_dup`:** Either the minimum base is small (≤ k), or there's a duplicate base value
+- **`usesOnlyZeroOne_sum_distinct_powers`:** Equivalence between 0/1 digits and sums of distinct powers
 
 ## File Structure
 
 ```
-Erdos124.lean          # Main formalization (~1400 lines)
+Erdos124.lean          # Main formalization (~1100 lines)
 lakefile.lean          # Lake build configuration
 lake-manifest.json     # Dependency lock file
 ```
 
 ### Main Definitions
 
-- `usesOnlyZeroOne b n`: Predicate that n uses only 0,1 digits in base b
-- `BasePower k`: Structure pairing a base index with an exponent
-- `powersUpTo k d n`: All powers d_i^e <= n across k bases
-- `onesInP k d n`: The "ones" subset {(i, 0) : i < k}
+- `usesOnlyZeroOne b n`: Predicate that n uses only 0,1 digits in base b (via `Nat.digits`)
+- `BasePower k`: Structure pairing a base index (Fin k) with an exponent (ℕ)
+- `BasePower.val d p`: The value d(p.idx)^(p.exp) of a base-power pair
+- `powersUpTo k d M`: All base-power pairs with value ≤ M
+- `onesInP k d M`: The "ones" subset {(i, 0) : i < k}
 
 ### Main Theorems
 
 - `erdos_124`: The main theorem
-- `erdos_124_with_base2`: Special case when base 2 exists
-- `brown_complete`: Complete sequence subset sum theorem
+- `brown_complete`: Complete sequence theorem for subset sum existence
 - `capacity_lemma`: Density condition implies sufficient capacity
-- `density_key`: Minimum base bound from density
+- `density_key'`: Minimum base bound from density
+- `density_small_or_dup`: Key case split lemma
 
 ## Building
 
@@ -119,23 +114,24 @@ EOF
 
 ## References
 
-- [Erdos Problems - Problem 124](https://www.erdosproblems.com/124)
-- Brown, T.C. "Complete sequences of natural numbers" (for the subset sum approach)
+- [Erdős Problems - Problem 124](https://www.erdosproblems.com/124)
+- J. L. Brown, Jr. ["Note on Complete Sequences of Integers"](https://www.jstor.org/stable/2311150), American Mathematical Monthly, 68 (1961), pp. 557-560. (Original source of Brown's completeness criterion)
+- J. L. Brown, Jr. ["Some Sequence-to-Sequence Transformations which Preserve Completeness"](https://www.fq.math.ca/Scanned/16-1/brown1.pdf), The Fibonacci Quarterly, Vol. 16, No. 1 (1978), pp. 19-22. (Applies the criterion)
 
 ## Technical Notes
 
 ### Grind Tactic
 
-Several edge cases are resolved using Lean 4's `grind` tactic with suggestions enabled. This handles complex case splits involving:
+Several edge cases in the strong induction are resolved using Lean 4's `grind` tactic. This handles complex case splits involving:
 - Set membership conflicts
 - Arithmetic inequalities from the density condition
-- Disjointness arguments
+- Disjointness arguments between constructed subsets
 
 ### Development Approach
 
 This formalization was developed iteratively:
-1. Established the core structure using `subset_sum_via_induction`
-2. Proved special cases (base 2, small n)
-3. Built supporting lemmas for density bounds
-4. Handled edge cases via careful case analysis
-5. Finalized proofs using `grind +suggestions` for remaining goals
+1. Established the digit equivalence (`usesOnlyZeroOne_sum_distinct_powers`)
+2. Proved Brown's completeness lemma
+3. Built density bound lemmas (`density_key'`, `density_small_or_dup`)
+4. Structured the main proof via strong induction
+5. Handled edge cases via case analysis and `grind`
