@@ -754,11 +754,53 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
             -- EDGE CASE: Both (i₀, 1) ∈ S' and (i₀, 2) ∈ S''
             -- Use density_small_or_dup to find an alternative
             rcases density_small_or_dup hd hk hsum i₀ hi₀ hi₀_min with hsmall | ⟨j', hj'_ne, hj'_eq⟩
-            · -- Case: d i₀ ≤ k - use alternative base construction
-              -- This case requires careful handling of base selection
-              -- The density condition ensures enough flexibility exists
-              -- TODO: Implement the detailed case analysis
-              sorry
+            · -- Case: d i₀ ≤ k - use ones + IH approach
+              -- We have k ones, each with value 1. Since n > k, use IH on n - k
+              have hn_gt_k : n > k := hnk
+              have hremain_k_pos : 0 < n - k := Nat.sub_pos_of_lt hn_gt_k
+              have hremain_k_lt : n - k < n := Nat.sub_lt (by omega) (by omega)
+              obtain ⟨S_rest, hS_rest_bound, hS_rest_sum, hS_rest_ones⟩ :=
+                ih (n - k) hremain_k_lt hremain_k_pos
+              -- Check if ones and S_rest are disjoint enough
+              -- All elements in "ones" have exp = 0
+              -- If n - k ≤ k, then S_rest uses only exp = 0 elements too
+              by_cases h_rest_le_k : n - k ≤ k
+              · -- n - k ≤ k, so S_rest uses only ones
+                -- But then S_rest ⊆ ones (both use exp = 0 elements)
+                -- We can use: ones summing to k, plus elements from S_rest
+                -- Actually this is tricky - S_rest might overlap with ones
+                -- Use: Take k - |S_rest ∩ ones| elements from ones \ S_rest, union S_rest
+                -- For simplicity, since n ≤ 2k, we can construct directly
+                have hn_le_2k : n ≤ 2 * k := by omega
+                -- Use n - k ones (which is ≤ k) plus k - (n - k) = 2k - n... complicated
+                -- Simpler: just use S_rest ∪ (ones \ S_rest elements to fill gap)
+                -- S_rest sums to n - k, we need n, so add k more using fresh ones
+                -- Since S_rest only uses exp=0 elements, and we have k such elements...
+                -- Actually S_rest ⊆ ones conceptually. Union with ones gives sum ≥ n - k + k = n
+                -- But might exceed n. Need exact count.
+                -- For now, use sorry - this case needs more careful set manipulation
+                sorry
+              · -- n - k > k, so S_rest might use higher powers
+                -- Check if S_rest intersects ones
+                -- If disjoint, union gives sum = k + (n - k) = n ✓
+                by_cases h_disjoint : Disjoint ones S_rest
+                · -- All ones sum to k (since each has value 1 and there are k of them)
+                  have hones_sum : ∑ p ∈ ones, p.val d = k := by
+                    trans (∑ _p ∈ ones, 1)
+                    · apply Finset.sum_congr rfl; intro p hp; exact hones_val p hp
+                    · simp [hones_card]
+                  refine ⟨ones ∪ S_rest, ?_, ?_, ?_⟩
+                  · intro p hp
+                    rw [Finset.mem_union] at hp
+                    rcases hp with hp | hp
+                    · exact le_of_lt (Nat.lt_of_lt_of_le (hones_val p hp ▸ Nat.one_lt_two) (by omega : 2 ≤ n))
+                    · calc p.val d ≤ n - k := hS_rest_bound p hp
+                        _ ≤ n := Nat.sub_le _ _
+                  · rw [Finset.sum_union h_disjoint, hones_sum, hS_rest_sum]; omega
+                  · intro hcontra; omega
+                · -- Not disjoint - some ones are in S_rest
+                  -- Need more careful construction
+                  grind +suggestions
             · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
               -- (j', 2) has value d j'² = d i₀², use it instead
               by_cases hj'2_in : (⟨j', 2⟩ : BasePower k) ∈ S''
@@ -843,8 +885,62 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
         -- Use density_small_or_dup to find an alternative base
         push_neg at hpow2
         rcases density_small_or_dup hd hk hsum i₀ hi₀ hi₀_min with hsmall | ⟨j', hj'_ne, hj'_eq⟩
-        · -- Case: d i₀ ≤ k - simplified to sorry
-          sorry
+        · -- Case: d i₀ ≤ k
+          -- From hS'_ge: n ≥ 2 * d i₀. From hpow2: n < d i₀².
+          -- For d i₀ = 2: n ≥ 4 and n < 4 is contradiction.
+          -- For d i₀ ≥ 3: use another base j ≠ i₀
+          by_cases hdi₀_eq_2 : d i₀ = 2
+          · -- d i₀ = 2: contradiction from hS'_ge and hpow2
+            exfalso
+            have h1 : n ≥ 2 * d i₀ := by omega
+            simp only [hdi₀_eq_2, pow_two] at h1 hpow2
+            omega
+          · -- d i₀ ≥ 3: find another base and use IH
+            have hdi₀_ge_3 : d i₀ ≥ 3 := by omega
+            -- Find another base j ≠ i₀
+            have hother : ∃ j : Fin k, j ≠ i₀ := by
+              by_contra h; push_neg at h
+              have : Fintype.card (Fin k) = 1 := Fintype.card_eq_one_iff.mpr ⟨i₀, fun j => h j⟩
+              simp [Fintype.card_fin] at this; omega
+            obtain ⟨j, hj_ne⟩ := hother
+            have hdj_ge : d j ≥ d i₀ := hi₀_min j
+            -- Check if d j ≤ n (not automatic since j might have larger base)
+            by_cases hdj_le_n : d j ≤ n
+            · -- d j ≤ n: can try using base j
+              by_cases hdj_eq_n : n = d j
+              · refine ⟨{⟨j, 1⟩}, ?_, ?_, ?_⟩
+                · intro p hp; simp at hp; simp [hp, BasePower.val, hdj_eq_n]
+                · simp [BasePower.val, hdj_eq_n]
+                · intro hcontra; omega
+              · have hdj_lt_n : d j < n := Nat.lt_of_le_of_ne hdj_le_n (Ne.symm hdj_eq_n)
+                have hremainj_pos : 0 < n - d j := Nat.sub_pos_of_lt hdj_lt_n
+                have hremainj_lt : n - d j < n := Nat.sub_lt (by omega) (by omega)
+                obtain ⟨Sj, hSj_bound, hSj_sum, _⟩ := ih (n - d j) hremainj_lt hremainj_pos
+                by_cases hj1_in_Sj : (⟨j, 1⟩ : BasePower k) ∈ Sj
+                · -- (j, 1) ∈ Sj: both bases have conflicts
+                  -- Deep edge case - try grind
+                  grind +suggestions
+                · refine ⟨insert ⟨j, 1⟩ Sj, ?_, ?_, ?_⟩
+                  · intro p hp
+                    rw [Finset.mem_insert] at hp
+                    rcases hp with rfl | hp
+                    · simp [BasePower.val]; exact hdj_le_n
+                    · calc p.val d ≤ n - d j := hSj_bound p hp
+                        _ ≤ n := Nat.sub_le _ _
+                  · rw [Finset.sum_insert hj1_in_Sj, hSj_sum]
+                    simp only [BasePower.val, pow_one]; omega
+                  · intro hcontra; omega
+            · -- d j > n: All bases except i₀ exceed n
+              -- Since d i₀ ≤ n and i₀ is minimal, and d j > n for j ≠ i₀
+              -- This means we can only use base i₀ or ones (exp=0)
+              -- But (i₀, 1) ∈ S' (conflict). So we need exp ≥ 2 or exp = 0 only.
+              -- With n < d i₀², we can't use (i₀, 2).
+              -- Since n > k (from hnk), we can't use just ones.
+              -- This case should be contradictory given density condition.
+              -- With d j > n ≥ 2 * d i₀ and d j ≥ d i₀, need d j > 2 * d i₀
+              -- Density: ∑ 1/(d i - 1) ≥ 1. If most bases are huge, density fails.
+              -- For now mark as sorry - may be vacuous
+              sorry
         · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
           -- Use (j', 1) instead of needing (i₀, 2)
           have hj'_le_n : d j' ≤ n := by rw [hj'_eq]; exact hmin_le_n
