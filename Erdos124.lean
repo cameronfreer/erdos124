@@ -427,7 +427,7 @@ lemma mem_powersUpTo_iff {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (p : BasePower 
     exact ⟨⟨p.idx, p.exp⟩, ⟨Nat.lt_succ_of_le he_range, hpow⟩, by simp⟩
 
 /-- The ones in powersUpTo: elements (i, 0) with value 1 -/
-def onesInP (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
+def onesInP (k : ℕ) (_d : Fin k → ℕ) (_M : ℕ) : Finset (BasePower k) :=
   (Finset.univ : Finset (Fin k)).map ⟨fun i => ⟨i, 0⟩, fun _ _ h => by simp [BasePower.ext_iff] at h; exact h⟩
 
 lemma onesInP_subset {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (hM : 0 < M) :
