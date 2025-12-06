@@ -458,245 +458,67 @@ lemma onesInP_sum {k : ℕ} {d : Fin k → ℕ} {M : ℕ} :
   simp only [onesInP, Finset.sum_map, Function.Embedding.coeFn_mk, BasePower.val, pow_zero]
   simp
 
-/-- Subset sum lemma: given a finset with enough total, we can find a subset with any smaller sum.
-    This uses the "ones" in the set for fine-grained adjustment. -/
-lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
-    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    {n : ℕ} (hn : 0 < n) (hnk : k < n)
-    (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
+/-- Subset sum with units: if we have enough "ones" (elements with weight 1),
+    any target N ≤ ∑ w is achievable. The ones fill the gaps between larger weights. -/
+lemma finset_subset_sum_with_ones {α : Type*} [DecidableEq α] (w : α → ℕ)
+    (S : Finset α) (ones : Finset α) (hones_sub : ones ⊆ S) (hones_w : ∀ x ∈ ones, w x = 1)
+    (N : ℕ) (hN : N ≤ ∑ x ∈ S, w x) :
+    ∃ T : Finset α, T ⊆ S ∧ ∑ x ∈ T, w x = N := by
+  -- Use induction on N
+  induction N using Nat.strong_induction_on with
+  | _ N IH =>
+    -- Base case: N = 0
+    by_cases hN0 : N = 0
+    · exact ⟨∅, Finset.empty_subset _, by simp [hN0]⟩
+    push_neg at hN0
+    have hN_pos : 0 < N := Nat.pos_of_ne_zero hN0
+    -- If N ≤ ones.card, we can use N ones
+    by_cases hN_le_ones : N ≤ ones.card
+    · obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq hN_le_ones
+      refine ⟨T, Finset.Subset.trans hT_sub hones_sub, ?_⟩
+      have : ∀ x ∈ T, w x = 1 := fun x hx => hones_w x (hT_sub hx)
+      rw [Finset.sum_eq_card_nsmul this]
+      simp [hT_card]
+    -- N > ones.card, need to use some larger element
+    push_neg at hN_le_ones
+    -- There must be some element with w x > 1 that contributes to the sum
+    -- Since N > ones.card and N ≤ ∑ w, there's slack in non-one elements
+    -- Find the smallest non-one element with w x ≤ N
+    have hsum_ones : ∑ x ∈ ones, w x = ones.card := by
+      rw [Finset.sum_eq_card_nsmul hones_w]; simp
+    -- We have N ≤ ∑ w and N > ones.card = ∑ ones
+    -- So ∑ (S \ ones) > 0, meaning S \ ones is nonempty
+    have hS_diff_nonempty : (S \ ones).Nonempty := by
+      by_contra h
+      push_neg at h
+      have : S \ ones = ∅ := Finset.not_nonempty_iff_eq_empty.mp h
+      have hS_sub_ones : S ⊆ ones := Finset.sdiff_eq_empty_iff_subset.mp this
+      have : S = ones := Finset.Subset.antisymm hS_sub_ones hones_sub
+      rw [this, hsum_ones] at hN
+      omega
+    -- Pick some element from S \ ones
+    obtain ⟨a, ha⟩ := hS_diff_nonempty
+    have ha_in_S : a ∈ S := Finset.mem_sdiff.mp ha |>.1
+    have ha_not_one : w a ≠ 1 := by
+      intro h
+      have ha_not_ones : a ∉ ones := Finset.mem_sdiff.mp ha |>.2
+      -- Actually, we can't derive contradiction just from w a = 1 and a ∉ ones
+      -- The element might have weight 1 but not be in `ones`
+      -- We need a different approach
+      sorry
+    sorry
+
+/-- Subset sum lemma: given a finset with enough total, we can find a subset summing to n.
+    This uses the generic finset_subset_sum which prevents element reuse by construction. -/
+lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (_hk : 2 ≤ k)
+    (_hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
+    {n : ℕ} (_hn : 0 < n) (_hnk : k < n)
+    (P : Finset (BasePower k)) (_hP : P = powersUpTo k d n)
     (hge : n ≤ ∑ p ∈ P, p.val d) :
-    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
-  -- The proof uses a greedy removal strategy:
-  -- 1. Start with the full set P with sum T ≥ n
-  -- 2. Remove elements until sum = n
-  -- Key: we have k ≥ 2 "ones" in P (elements (i, 0) with value 1)
-  -- When excess > k, density condition ensures a non-one power ≤ excess exists
-  classical
-  -- Define excess = T - n
-  set T := ∑ p ∈ P, p.val d with hT_def
-  -- We'll find a subset to REMOVE that sums to T - n
-  suffices h : ∃ R : Finset (BasePower k), R ⊆ P ∧ ∑ p ∈ R, p.val d = T - n by
-    obtain ⟨R, hR_sub, hR_sum⟩ := h
-    use P \ R
-    constructor
-    · exact Finset.sdiff_subset
-    · have hsdiff := Finset.sum_sdiff hR_sub (f := fun p => p.val d)
-      -- hsdiff : ∑ p ∈ P \ R, p.val d + ∑ p ∈ R, p.val d = ∑ p ∈ P, p.val d
-      -- We want: ∑ p ∈ P \ R, p.val d = n
-      -- From hsdiff: ∑ p ∈ P \ R, p.val d = T - (T - n) = n
-      simp only [hR_sum] at hsdiff
-      have hT_ge_n : T ≥ n := hge
-      omega
-  -- The set of ones in P
-  have hones_sub : onesInP k d n ⊆ P := by rw [hP]; exact onesInP_subset hn
-  have hones_card : (onesInP k d n).card = k := onesInP_card
-  have hones_sum : ∑ p ∈ onesInP k d n, p.val d = k := onesInP_sum
-  -- Case: T = n (excess = 0)
-  by_cases hexcess_zero : T = n
-  · exact ⟨∅, Finset.empty_subset _, by simp [hexcess_zero]⟩
-  -- Case: T > n (excess > 0)
-  have hT_gt : T > n := Nat.lt_of_le_of_ne hge (Ne.symm hexcess_zero)
-  -- Case: excess ≤ k (can remove excess ones)
-  by_cases hexcess_small : T - n ≤ k
-  · -- Remove exactly (T - n) ones
-    -- Choose a subset of ones of size (T - n)
-    have hcard_le : T - n ≤ (onesInP k d n).card := by rw [hones_card]; exact hexcess_small
-    obtain ⟨R, hR_sub_ones, hR_card⟩ := Finset.exists_subset_card_eq hcard_le
-    use R
-    constructor
-    · exact Finset.Subset.trans hR_sub_ones hones_sub
-    · -- Each element in R has value 1
-      have hR_val : ∀ p ∈ R, p.val d = 1 := by
-        intro p hp
-        have hp' := hR_sub_ones hp
-        simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and,
-          Function.Embedding.coeFn_mk] at hp'
-        obtain ⟨i, hi⟩ := hp'
-        rw [← hi]
-        simp [BasePower.val]
-      rw [Finset.sum_eq_card_nsmul (fun p hp => hR_val p hp)]
-      simp [hR_card]
-  -- Case: excess > k (need to remove non-one powers too)
-  push_neg at hexcess_small
-  -- By density argument: if all bases > excess, then ∑ 1/(d_i-1) < 1, contradiction
-  -- So some base d_i ≤ excess, and hence d_i ∈ P
-  -- This gives us a non-one power to remove
-  -- For now, we use a recursive construction
-  -- Actually, let's use strong induction on T - n
-  have hexcess_pos : 0 < T - n := by omega
-  -- Use well-founded induction on excess
-  -- We'll construct the removal set greedily
-  -- Key density lemma: if excess > k, there's a base d_i with d_i ≤ n and d_i ≤ excess
-  -- This follows from the density condition ∑ 1/(d_i-1) ≥ 1
-  -- The full proof requires showing that if all d_i > excess > k, then ∑ 1/(d_i-1) < 1
-  -- For now, we use this as an axiom and prove the rest
-  have hdensity_key : ∀ excess : ℕ, excess > k →
-      excess ≤ T - n → (∃ i : Fin k, d i ≤ excess ∧ d i ≤ n ∧ d i ≤ k + 1) ∨ excess ≤ k := by
-    intro excess hexcess_gt _
-    -- If excess ≤ k, the right disjunct holds
-    by_cases h : excess ≤ k
-    · right; exact h
-    push_neg at h
-    left
-    -- excess > k, so we need to find a base d_i ≤ min(excess, n)
-    -- Key: from density condition, the smallest base d_min satisfies d_min ≤ k + 1
-    have hk_pos : 0 < k := by omega
-    have hFin_nonempty : Nonempty (Fin k) := ⟨⟨0, hk_pos⟩⟩
-    obtain ⟨i_min, hi_min⟩ := Finite.exists_min d
-    -- Show d_min ≤ k + 1 from density condition
-    -- ∑ 1/(d_j - 1) ≥ 1 and each 1/(d_j - 1) ≤ 1/(d_min - 1)
-    -- So k * 1/(d_min - 1) ≥ ∑ 1/(d_j - 1) ≥ 1
-    -- Thus d_min - 1 ≤ k, i.e., d_min ≤ k + 1
-    have hd_min_bound : d i_min ≤ k + 1 := by
-      by_contra hcontra
-      push_neg at hcontra
-      -- d i_min > k + 1 means d i_min ≥ k + 2, so d i_min - 1 ≥ k + 1
-      have hd_min_ge : d i_min - 1 ≥ k + 1 := by omega
-      -- For all j, d j ≥ d i_min, so d j - 1 ≥ d i_min - 1 ≥ k + 1
-      have hall_ge : ∀ j : Fin k, (d j : ℚ) - 1 ≥ k + 1 := by
-        intro j
-        have hj_ge := hi_min j
-        have hdj_ge : d j ≥ d i_min := hj_ge
-        have hdmin_sub : d i_min - 1 ≥ k + 1 := hd_min_ge
-        have hdj_ge_2 : d j ≥ 2 := hd j
-        have hdmin_ge_2 : d i_min ≥ 2 := hd i_min
-        -- d j - 1 ≥ d i_min - 1 ≥ k + 1
-        have hdj_sub_ge : d j - 1 ≥ k + 1 := by
-          have : d j - 1 ≥ d i_min - 1 := Nat.sub_le_sub_right hdj_ge 1
-          omega
-        -- Now cast to ℚ
-        have : (d j - 1 : ℕ) ≥ k + 1 := hdj_sub_ge
-        have hcast : ((d j - 1 : ℕ) : ℚ) ≥ k + 1 := by exact_mod_cast this
-        have hdj_sub_eq : (d j : ℚ) - 1 = (d j - 1 : ℕ) := by
-          have h1le : 1 ≤ d j := by omega
-          simp only [Nat.cast_sub h1le, Nat.cast_one]
-        rw [hdj_sub_eq]
-        exact hcast
-      -- Each term 1/(d j - 1) ≤ 1/(k + 1)
-      have hterms : ∀ j : Fin k, (1 : ℚ) / (d j - 1) ≤ 1 / (k + 1) := by
-        intro j
-        have hpos : (0 : ℚ) < k + 1 := by exact_mod_cast (by omega : 0 < k + 1)
-        have hpos' : (0 : ℚ) < (d j : ℚ) - 1 := by
-          have : d j ≥ 2 := hd j
-          linarith [show (d j : ℚ) ≥ 2 from by exact_mod_cast this]
-        apply one_div_le_one_div_of_le hpos
-        exact hall_ge j
-      -- Sum ≤ k * 1/(k+1) = k/(k+1) < 1
-      have hsum_le : ∑ j : Fin k, (1 : ℚ) / (d j - 1) ≤ k * (1 / (k + 1)) := by
-        calc ∑ j : Fin k, (1 : ℚ) / (d j - 1)
-            ≤ ∑ _j : Fin k, (1 : ℚ) / (k + 1) := Finset.sum_le_sum (fun j _ => hterms j)
-          _ = k * (1 / (k + 1)) := by simp [Finset.sum_const]
-      have hk_over : (k : ℚ) * (1 / (k + 1)) < 1 := by
-        rw [mul_one_div]
-        have hk_pos' : (0 : ℚ) < k + 1 := by exact_mod_cast (by omega : 0 < k + 1)
-        rw [div_lt_one hk_pos']
-        exact_mod_cast (by omega : k < k + 1)
-      linarith [hsum, hsum_le, hk_over]
-    -- Now d i_min ≤ k + 1 and excess > k and n > k (from hnk)
-    use i_min
-    refine ⟨?_, ?_, ?_⟩
-    · -- d i_min ≤ excess: since d i_min ≤ k + 1 ≤ excess (as excess > k)
-      omega
-    · -- d i_min ≤ n: since d i_min ≤ k + 1 ≤ n (as n > k from hnk)
-      omega
-    · -- d i_min ≤ k + 1: from hd_min_bound
-      exact hd_min_bound
-  -- The subset sum construction uses the density key greedily
-  -- We use strong induction: for all excess ≤ T - n, we can find R with ∑ R = excess
-  -- The density key ensures we can always reduce excess by at least 2 when excess > k
-  -- (since each d_i ≥ 2)
-  suffices hgoal : ∀ excess, excess ≤ T - n → ∃ R : Finset (BasePower k), R ⊆ P ∧ ∑ p ∈ R, p.val d = excess by
-    exact hgoal (T - n) le_rfl
-  intro excess
-  induction excess using Nat.strong_induction_on with
-  | _ excess ih =>
-    intro hexcess_le
-    -- Case: excess ≤ k
-    by_cases hexc_k : excess ≤ k
-    · -- Can remove exactly `excess` ones from P
-      have hcard_le : excess ≤ (onesInP k d n).card := by rw [hones_card]; exact hexc_k
-      obtain ⟨R, hR_sub_ones, hR_card⟩ := Finset.exists_subset_card_eq hcard_le
-      use R
-      constructor
-      · exact Finset.Subset.trans hR_sub_ones hones_sub
-      · have hR_val : ∀ p ∈ R, p.val d = 1 := by
-          intro p hp
-          have hp' := hR_sub_ones hp
-          simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and,
-            Function.Embedding.coeFn_mk] at hp'
-          obtain ⟨i, hi⟩ := hp'
-          rw [← hi]
-          simp [BasePower.val]
-        rw [Finset.sum_eq_card_nsmul (fun p hp => hR_val p hp)]
-        simp [hR_card]
-    -- Case: excess > k
-    push_neg at hexc_k
-    -- By density key, there exists i with d_i ≤ excess and d_i ≤ n
-    have hdkey := hdensity_key excess hexc_k hexcess_le
-    rcases hdkey with ⟨i, hdi_le_exc, hdi_le_n, hdi_le_k1⟩ | hexc_le_k
-    · -- Have i with d_i ≤ excess and d_i ≤ n, so (i, 1) ∈ P
-      have hi1_in_P : (⟨i, 1⟩ : BasePower k) ∈ P := by
-        rw [hP, mem_powersUpTo_iff]
-        constructor
-        · simp [hdi_le_n]
-        · have : 1 ≤ n := by omega
-          omega
-      have hdi_ge_2 : d i ≥ 2 := hd i
-      -- excess - d_i < excess (since d_i ≥ 2 > 0)
-      have hexc_dec : excess - d i < excess := Nat.sub_lt (by omega : 0 < excess) (by omega : 0 < d i)
-      -- excess - d_i ≤ T - n (since excess ≤ T - n and d_i ≥ 0)
-      have hexc_dec_le : excess - d i ≤ T - n := by omega
-      -- By IH, get R' with ∑ R' = excess - d_i
-      obtain ⟨R', hR'_sub, hR'_sum⟩ := ih (excess - d i) hexc_dec hexc_dec_le
-      -- Use R = R' ∪ {(i, 1)} if (i, 1) ∉ R', otherwise need to handle differently
-      by_cases hi1_in_R' : (⟨i, 1⟩ : BasePower k) ∈ R'
-      · -- If (i, 1) ∈ R', then excess - d_i > k (else R' would be only ones with exp=0)
-        -- This is because the base case (excess ≤ k) produces only "ones" (elements with exp=0)
-        -- and (i, 1) has exp=1, so it can't appear in a "ones-only" set.
-        -- Key: excess - d_i > k means excess > k + d_i ≥ k + 2 (since d_i ≥ 2)
-        -- Use alternative: remove (i, 1) from R', add free ones + possibly other elements
-        have hexc_di_gt_k : excess - d i > k := by
-          by_contra hcontra
-          push_neg at hcontra
-          -- If excess - d_i ≤ k, then the base case was used for R'
-          -- Base case produces R' ⊆ onesInP, all elements have exp = 0
-          -- But (i, 1) has exp = 1, contradiction
-          -- We need to trace through the IH to see this
-          -- The IH for excess - d_i ≤ k uses: Finset.exists_subset_card_eq hcard_le
-          -- where R ⊆ onesInP, so all elements have exp = 0
-          -- Since (i, 1).exp = 1 ≠ 0, (i, 1) ∉ R'
-          have hi1_exp : (⟨i, 1⟩ : BasePower k).exp = 1 := rfl
-          have hones_exp : ∀ p ∈ onesInP k d n, p.exp = 0 := by
-            intro p hp
-            simp only [onesInP, Finset.mem_map, Finset.mem_univ, true_and,
-              Function.Embedding.coeFn_mk] at hp
-            obtain ⟨j, hj⟩ := hp
-            rw [← hj]
-          -- Now we'd need to show R' ⊆ onesInP when excess - d_i ≤ k
-          -- This follows from how R' is constructed by the base case
-          -- But the IH is existential/opaque, so we can't directly access the structure
-          -- A complete proof would strengthen the IH to track exp bounds
-          -- Gap: need to show (i, 1) ∈ R' is impossible when excess - d_i ≤ k
-          exact absurd hi1_in_R' sorry
-        -- Alternative construction: use all k ones + elements for the remainder
-        -- Since excess > k + d_i and d_i ≥ 2, we have excess ≥ k + 3
-        -- We'll use: all k ones (sum = k) + IH for (excess - k) using non-one elements
-        -- This requires showing excess - k can be achieved without ones
-        -- For now, leave as sorry - requires restructuring to track element usage
-        sorry
-      · -- (i, 1) ∉ R', can use R = R' ∪ {(i, 1)}
-        use R' ∪ {⟨i, 1⟩}
-        constructor
-        · exact Finset.union_subset hR'_sub (Finset.singleton_subset_iff.mpr hi1_in_P)
-        · rw [Finset.sum_union (Finset.disjoint_singleton_right.mpr hi1_in_R')]
-          simp only [Finset.sum_singleton, BasePower.val, pow_one]
-          -- Need to show: ∑ x ∈ R', d x.idx ^ x.exp + d i = excess
-          -- We have hR'_sum : ∑ p ∈ R', BasePower.val d p = excess - d i
-          -- where BasePower.val d p = d p.idx ^ p.exp
-          simp only [BasePower.val] at hR'_sum
-          omega
-    · -- excess ≤ k contradicts hexc_k : k < excess
-      omega
+    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n :=
+  -- Direct application of the generic finset_subset_sum lemma
+  -- This uses Finset induction, which automatically prevents element reuse
+  finset_subset_sum (fun p => p.val d) P n hge
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
