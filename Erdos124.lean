@@ -458,67 +458,137 @@ lemma onesInP_sum {k : ℕ} {d : Fin k → ℕ} {M : ℕ} :
   simp only [onesInP, Finset.sum_map, Function.Embedding.coeFn_mk, BasePower.val, pow_zero]
   simp
 
-/-- Subset sum with units: if we have enough "ones" (elements with weight 1),
-    any target N ≤ ∑ w is achievable. The ones fill the gaps between larger weights. -/
-lemma finset_subset_sum_with_ones {α : Type*} [DecidableEq α] (w : α → ℕ)
-    (S : Finset α) (ones : Finset α) (hones_sub : ones ⊆ S) (hones_w : ∀ x ∈ ones, w x = 1)
-    (N : ℕ) (hN : N ≤ ∑ x ∈ S, w x) :
-    ∃ T : Finset α, T ⊆ S ∧ ∑ x ∈ T, w x = N := by
-  -- Use induction on N
-  induction N using Nat.strong_induction_on with
-  | _ N IH =>
-    -- Base case: N = 0
-    by_cases hN0 : N = 0
-    · exact ⟨∅, Finset.empty_subset _, by simp [hN0]⟩
-    push_neg at hN0
-    have hN_pos : 0 < N := Nat.pos_of_ne_zero hN0
-    -- If N ≤ ones.card, we can use N ones
-    by_cases hN_le_ones : N ≤ ones.card
-    · obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq hN_le_ones
-      refine ⟨T, Finset.Subset.trans hT_sub hones_sub, ?_⟩
-      have : ∀ x ∈ T, w x = 1 := fun x hx => hones_w x (hT_sub hx)
-      rw [Finset.sum_eq_card_nsmul this]
-      simp [hT_card]
-    -- N > ones.card, need to use some larger element
-    push_neg at hN_le_ones
-    -- There must be some element with w x > 1 that contributes to the sum
-    -- Since N > ones.card and N ≤ ∑ w, there's slack in non-one elements
-    -- Find the smallest non-one element with w x ≤ N
-    have hsum_ones : ∑ x ∈ ones, w x = ones.card := by
-      rw [Finset.sum_eq_card_nsmul hones_w]; simp
-    -- We have N ≤ ∑ w and N > ones.card = ∑ ones
-    -- So ∑ (S \ ones) > 0, meaning S \ ones is nonempty
-    have hS_diff_nonempty : (S \ ones).Nonempty := by
-      by_contra h
-      push_neg at h
-      have : S \ ones = ∅ := Finset.not_nonempty_iff_eq_empty.mp h
-      have hS_sub_ones : S ⊆ ones := Finset.sdiff_eq_empty_iff_subset.mp this
-      have : S = ones := Finset.Subset.antisymm hS_sub_ones hones_sub
-      rw [this, hsum_ones] at hN
-      omega
-    -- Pick some element from S \ ones
-    obtain ⟨a, ha⟩ := hS_diff_nonempty
-    have ha_in_S : a ∈ S := Finset.mem_sdiff.mp ha |>.1
-    have ha_not_one : w a ≠ 1 := by
-      intro h
-      have ha_not_ones : a ∉ ones := Finset.mem_sdiff.mp ha |>.2
-      -- Actually, we can't derive contradiction just from w a = 1 and a ∉ ones
-      -- The element might have weight 1 but not be in `ones`
-      -- We need a different approach
-      sorry
-    sorry
+/-!
+## Brown-Based Subset Sum
 
-/-- Subset sum lemma: given a finset with enough total, we can find a subset summing to n.
-    This uses the generic finset_subset_sum which prevents element reuse by construction. -/
-lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (_hk : 2 ≤ k)
-    (_hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    {n : ℕ} (_hn : 0 < n) (_hnk : k < n)
-    (P : Finset (BasePower k)) (_hP : P = powersUpTo k d n)
+We use Brown's completeness lemma to show that any N ≤ total sum is achievable.
+The key is that powers listed in nondecreasing order satisfy the step condition:
+each power is ≤ 1 + sum of all smaller powers.
+-/
+
+/-- The density condition implies min base ≤ k + 1 -/
+lemma density_key' {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) :
+    ∃ i : Fin k, d i ≤ k + 1 := by
+  -- Same as density_key but with explicit bound
+  by_contra h
+  push_neg at h
+  have hall_large : ∀ i : Fin k, d i ≥ k + 2 := fun i => Nat.lt_iff_add_one_le.mp (h i)
+  have hbound : ∀ i : Fin k, (1 : ℚ) / (d i - 1) ≤ 1 / (k + 1) := by
+    intro i
+    have hdi : d i ≥ k + 2 := hall_large i
+    have hpos : (0 : ℚ) < k + 1 := by positivity
+    have hge : (d i : ℚ) - 1 ≥ k + 1 := by
+      have : (k + 2 : ℕ) ≤ d i := hdi
+      have h1 : (k + 2 : ℚ) ≤ (d i : ℚ) := by exact_mod_cast this
+      linarith
+    exact one_div_le_one_div_of_le hpos hge
+  have htotal : ∑ i : Fin k, (1 : ℚ) / (d i - 1) ≤ k * (1 / (k + 1)) := by
+    calc ∑ i : Fin k, (1 : ℚ) / (d i - 1)
+        ≤ ∑ _i : Fin k, (1 : ℚ) / (k + 1) := Finset.sum_le_sum (fun i _ => hbound i)
+      _ = k * (1 / (k + 1)) := by simp [Finset.sum_const]
+  have hlt : k * (1 / (k + 1 : ℚ)) < 1 := by
+    have hk_pos : (0 : ℚ) < k + 1 := by positivity
+    rw [mul_one_div, div_lt_one hk_pos]
+    exact_mod_cast (Nat.lt_succ_self k)
+  linarith
+
+/-- Subset sum for powersUpTo using Brown's approach.
+    Key insight: enumerate all powers in any order that puts ones first,
+    then apply Brown's achievability lemma. -/
+lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
+    {n : ℕ} (hn : 0 < n) (hnk : k < n)
+    (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
     (hge : n ≤ ∑ p ∈ P, p.val d) :
-    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n :=
-  -- Direct application of the generic finset_subset_sum lemma
-  -- This uses Finset induction, which automatically prevents element reuse
-  finset_subset_sum (fun p => p.val d) P n hge
+    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
+  classical
+  -- The ones (i, 0) are in P and have value 1
+  have hones_in_P : ∀ i : Fin k, (⟨i, 0⟩ : BasePower k) ∈ P := by
+    intro i
+    rw [hP, mem_powersUpTo_iff]
+    simp only [pow_zero]
+    exact ⟨hn, Nat.zero_le n⟩
+
+  -- The first non-one powers are the bases d_i (for those with d_i ≤ n)
+  -- By density, min(d_i) ≤ k + 1
+  have hmin_base : ∃ i : Fin k, d i ≤ k + 1 := density_key' hd hk hsum
+
+  -- Key property: we can construct a sequence satisfying Brown's step condition
+  -- by listing: all ones first, then powers in increasing order of value
+
+  -- For now, we use a direct construction based on the structure of powers
+  -- The key is that with k ones and density, Brown's step condition holds
+
+  -- Define the set of "ones" in P
+  let ones : Finset (BasePower k) := (Finset.univ : Finset (Fin k)).image (fun i => ⟨i, 0⟩)
+  have hones_sub : ones ⊆ P := by
+    intro p hp
+    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
+    obtain ⟨i, rfl⟩ := hp
+    exact hones_in_P i
+
+  have hones_card : ones.card = k := by
+    simp only [ones]
+    rw [Finset.card_image_of_injective]
+    · simp [Fintype.card_fin]
+    · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
+
+  have hones_val : ∀ p ∈ ones, p.val d = 1 := by
+    intro p hp
+    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
+    obtain ⟨i, rfl⟩ := hp
+    simp [BasePower.val]
+
+  -- Sum of ones equals k
+  have hones_sum : ∑ p ∈ ones, p.val d = k := by
+    rw [Finset.sum_eq_card_nsmul hones_val, hones_card]
+    simp
+
+  -- The non-ones have value ≥ 2
+  have hnonones_ge2 : ∀ p ∈ P \ ones, 2 ≤ p.val d := by
+    intro p hp
+    simp only [Finset.mem_sdiff, ones, Finset.mem_image, Finset.mem_univ, true_and,
+               not_exists] at hp
+    obtain ⟨hpP, hpnot⟩ := hp
+    -- p is not a one, so p.exp ≠ 0
+    have hexp_ne : p.exp ≠ 0 := by
+      intro hexp
+      apply hpnot p.idx
+      ext <;> simp [hexp]
+    have hexp_pos : 0 < p.exp := Nat.pos_of_ne_zero hexp_ne
+    simp only [BasePower.val]
+    have hd_ge : d p.idx ≥ 2 := hd p.idx
+    calc d p.idx ^ p.exp ≥ d p.idx ^ 1 := Nat.pow_le_pow_right (by omega : 1 ≤ d p.idx) hexp_pos
+      _ = d p.idx := pow_one _
+      _ ≥ 2 := hd_ge
+
+  -- Now we apply a greedy/inductive argument
+  -- Key insight: with k ones and min non-one ≤ k + 1, Brown's step condition holds
+
+  -- Induction on the sum minus n (the excess)
+  have hexcess_bound : ∑ p ∈ P, p.val d - n < ∑ p ∈ P, p.val d + 1 := by omega
+
+  -- Use strong induction on the target value
+  -- Start with simpler cases
+  by_cases hn_le_k : n ≤ k
+  · -- n ≤ k: contradicts hnk (k < n)
+    omega
+  push_neg at hn_le_k
+  -- n > k: use the structure of powers
+
+  -- For n > k, we need to apply Brown's lemma
+  -- The key insight: with k ones and min base ≤ k + 1, we can achieve any target
+
+  -- The proof uses Brown's complete sequence property:
+  -- 1. List all powers starting with the k ones (value 1 each)
+  -- 2. Then list remaining powers in nondecreasing order
+  -- 3. Verify the step condition: each element ≤ 1 + sum of previous elements
+  -- 4. By Brown's lemma, any value ≤ total sum is achievable
+
+  -- For now, leave as sorry - the key is that the flawed cross-base redistribution
+  -- is completely removed, and the correct Brown-based approach is outlined
+  sorry
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
