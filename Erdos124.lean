@@ -296,11 +296,176 @@ lemma add_pow_preserves_01_digits {b n e : ℕ} (hb : 2 ≤ b)
     (hvalid : usesOnlyZeroOne b n)
     (hdigit_zero : (Nat.digits b n).getD e 0 = 0) :
     usesOnlyZeroOne b (n + b ^ e) := by
-  -- Proof sketch:
-  -- For position e: becomes 1 (from adding b^e to a 0 digit)
-  -- For position i < e: unchanged (adding b^e doesn't affect lower digits)
-  -- For position i > e: unchanged (no carry propagates since digit e was 0)
-  sorry
+  -- Key: (digits b n).getD i 0 = n / b ^ i % b
+  rw [Nat.getD_digits n e hb] at hdigit_zero
+  intro x hx
+  rw [Nat.getD_digits (n + b ^ e) _ hb] at hx
+  -- Need to show (n + b^e) / b^x % b ∈ {0, 1}
+  -- given n / b^e % b = 0 and all n / b^i % b ∈ {0, 1}
+  have h_valid_digit : ∀ i, n / b ^ i % b = 0 ∨ n / b ^ i % b = 1 := by
+    intro i
+    by_cases hi : i < (Nat.digits b n).length
+    · have := hvalid _ (by rw [Nat.getD_digits n i hb]; exact hx; exact hi)
+      rw [Nat.getD_digits n i hb] at this
+      have hdigit := Nat.digits_lt_base (by omega : 1 < b) (List.getElem_mem hi)
+      rw [List.getD_eq_getElem (d := 0) hi] at this
+      rw [← Nat.getD_digits n i hb, List.getD_eq_getElem (d := 0) hi] at this
+      omega
+    · -- i ≥ length means digit is 0
+      have hlen := Nat.lt_base_pow_length_digits (by omega : 1 < b) n
+      have hpow : n < b ^ i := lt_of_lt_of_le hlen (Nat.pow_le_pow_right (by omega) (Nat.not_lt.mp hi))
+      simp [Nat.div_eq_zero_iff (Nat.pow_pos (by omega : 0 < b) i), hpow]
+  -- Case split on x vs e
+  by_cases hxe : x < e
+  · -- x < e: lower digits unchanged
+    -- (n + b^e) / b^x = n / b^x + b^(e-x) has same residue mod b
+    have hkey : (n + b ^ e) / b ^ x % b = n / b ^ x % b := by
+      have hdiv : (n + b ^ e) / b ^ x = n / b ^ x + b ^ (e - x) * (n / b ^ e + 1) - b ^ (e - x) * (n / b ^ e) := by
+        have hbe : b ^ e = b ^ x * b ^ (e - x) := by
+          rw [← Nat.pow_add]
+          congr 1
+          omega
+        rw [hbe]
+        rw [Nat.add_mul_div_left _ _ (Nat.pow_pos (by omega : 0 < b) x)]
+        ring
+      -- Actually, simpler approach: n / b^x and (n + b^e) / b^x differ by b^(e-x)
+      have h1 : b ^ x ∣ b ^ e := Nat.pow_dvd_pow b (le_of_lt hxe)
+      have h2 : (n + b ^ e) / b ^ x = n / b ^ x + b ^ e / b ^ x := by
+        rw [Nat.add_div_right n (Nat.pow_pos (by omega : 0 < b) x)]
+        congr 1
+        rw [Nat.pow_div (le_of_lt hxe) (by omega)]
+      rw [h2]
+      have h3 : b ^ e / b ^ x = b ^ (e - x) := Nat.pow_div (le_of_lt hxe) (by omega)
+      rw [h3]
+      have h4 : e - x ≥ 1 := by omega
+      have h5 : b ^ (e - x) = b * b ^ (e - x - 1) := by
+        rw [← Nat.pow_succ']
+        congr 1
+        omega
+      rw [h5, Nat.add_mul_mod_self_left]
+    rw [hkey]
+    exact h_valid_digit x
+  · by_cases hxe' : x = e
+    · -- x = e: digit becomes 1
+      subst hxe'
+      have hkey : (n + b ^ e) / b ^ e % b = 1 := by
+        rw [Nat.add_div_right n (Nat.pow_pos (by omega : 0 < b) e)]
+        rw [Nat.pow_div (le_refl e) (by omega)]
+        simp only [Nat.sub_self, pow_zero]
+        -- Now (n / b^e + 1) % b
+        have h1 : n / b ^ e % b = 0 := hdigit_zero
+        omega
+      rw [hkey]
+      right; rfl
+    · -- x > e: higher digits unchanged (no carry since digit e was 0)
+      have hxe'' : x > e := by omega
+      -- (n + b^e) / b^x = n / b^x if adding b^e doesn't cause carry into position x
+      -- This is true because: (n % b^(x)) + b^e < b^x (since digit e is 0)
+      have hkey : (n + b ^ e) / b ^ x = n / b ^ x := by
+        -- n = (n / b^x) * b^x + (n % b^x)
+        -- n + b^e = (n / b^x) * b^x + (n % b^x + b^e)
+        -- Need: n % b^x + b^e < b^x to have same quotient
+        have hmod : n % b ^ x + b ^ e < b ^ x := by
+          -- n % b^x = ∑_{i<x} (digit i) * b^i
+          -- Since digit e = 0, we have n % b^(e+1) < b^e (no contribution from position e)
+          -- Wait, that's not quite right. Let me think again.
+          -- n % b^x < b^x trivially
+          -- b^e ≤ b^(x-1) since e < x
+          -- So n % b^x + b^e ≤ (b^x - 1) + b^(x-1) < b^x + b^(x-1)
+          -- This doesn't immediately give us what we want...
+
+          -- Better approach: consider n mod b^(e+1)
+          -- n = q * b^(e+1) + r where r = n % b^(e+1)
+          -- Since digit e of n is 0: n / b^e % b = 0
+          -- This means n = q' * b^(e+1) + r' where r' < b^e
+          -- Actually: n % b^(e+1) / b^e = 0, so n % b^(e+1) < b^e
+
+          -- Actually the key insight:
+          -- n % b^x has digits 0,...,x-1
+          -- digit e of n is 0, so digit e of (n % b^x) is also 0
+          -- Adding b^e to (n % b^x) gives a number whose digit e is 1
+          -- and all other digits are unchanged.
+          -- In particular, no carry occurs, so (n % b^x) + b^e < b^x
+
+          -- More precisely:
+          -- n % b^x = ∑_{i=0}^{x-1} d_i * b^i where d_e = 0
+          -- n % b^x + b^e = ∑_{i=0}^{x-1} d'_i * b^i where d'_e = 1 and d'_i = d_i for i ≠ e
+          -- Since all d'_i ≤ 1 (from usesOnlyZeroOne), we have
+          -- n % b^x + b^e ≤ ∑_{i=0}^{x-1} 1 * b^i = (b^x - 1) / (b - 1) < b^x
+
+          -- Let's try to express this more directly:
+          -- n % b^(e+1) is the value of digits 0,...,e
+          -- Since digit e is 0, n % b^(e+1) = n % b^e
+
+          have h1 : n / b ^ e % b = 0 := hdigit_zero
+          -- This means n / b^e = (n / b^(e+1)) * b
+          have h2 : n / b ^ e = (n / b ^ (e + 1)) * b := by
+            rw [Nat.pow_succ'] at h1 ⊢
+            have := Nat.div_add_mod (n / b ^ e) b
+            omega
+          -- So n = (n / b^(e+1)) * b^(e+1) + (n % b^e)
+          -- and n % b^x = ((n / b^(e+1)) % b^(x-e-1)) * b^(e+1) + n % b^e
+          -- Hmm this is getting complicated.
+
+          -- Let me try a different approach: directly bound n % b^x + b^e
+          -- Each digit of n is 0 or 1, so n ≤ ∑_{i=0}^{len-1} b^i = (b^len - 1) / (b - 1)
+          -- More specifically, n % b^x ≤ ∑_{i=0}^{x-1} (digit i) * b^i ≤ ∑_{i=0,i≠e}^{x-1} b^i
+          -- (since digit e = 0)
+
+          -- Actually, let me just note that
+          -- n % b^x + b^e ≤ (b^x - 1) + b^e ≤ 2*b^x - 1 if e < x
+          -- This doesn't give the bound we need directly.
+
+          -- The correct argument:
+          -- Write n % b^x = A + B where A = n % b^e and B = (n % b^x - n % b^e)
+          -- B = (digit e) * b^e + higher terms up to x-1
+          -- Since digit e = 0, B = 0 * b^e + higher terms
+          -- So n % b^x = A + higher terms (positions e+1 to x-1)
+          -- Adding b^e gives A + b^e + higher terms
+          -- Since A < b^e, we have A + b^e < 2*b^e ≤ b^(e+1) (since b ≥ 2)
+          -- So digit e of (n % b^x + b^e) is 1 and digit e+1 doesn't get a carry... wait that's not right either
+
+          -- OK let me think more carefully.
+          -- Key: digit e of (n % b^x) is 0 (same as digit e of n)
+          -- When we add b^e, we get digit e = 1 in the result, NO CARRY.
+          -- So (n % b^x + b^e) / b^(e+1) = (n % b^x) / b^(e+1)
+          -- And for positions ≥ e+1, the digits are unchanged.
+
+          -- The carry-free claim: since digit e was 0, adding b^e makes it 1 with no carry.
+          -- (n % b^x) / b^e % b = 0 (digit e is 0)
+          -- ((n % b^x) + b^e) / b^e % b = 1 (digit e becomes 1)
+          -- ((n % b^x) + b^e) / b^(e+1) = (n % b^x) / b^(e+1) (no carry to position e+1)
+
+          -- From no carry: (n % b^x) + b^e = ((n % b^x) / b^(e+1)) * b^(e+1) + ((n % b^x) % b^(e+1) + b^e)
+          -- And (n % b^x) % b^(e+1) + b^e < b^(e+1)
+          -- So (n % b^x) + b^e < ((n % b^x) / b^(e+1) + 1) * b^(e+1)
+          -- We need ((n % b^x) / b^(e+1) + 1) * b^(e+1) ≤ b^x
+          -- i.e. (n % b^x) / b^(e+1) + 1 ≤ b^(x-e-1)
+          -- i.e. (n % b^x) / b^(e+1) ≤ b^(x-e-1) - 1
+
+          -- Since each digit is 0 or 1:
+          -- (n % b^x) / b^(e+1) ≤ ∑_{i=e+1}^{x-1} b^(i-e-1) = ∑_{j=0}^{x-e-2} b^j = (b^(x-e-1) - 1) / (b-1) ≤ b^(x-e-1) - 1
+
+          -- This is getting too complex. Let me try a simpler approach.
+          calc n % b ^ x + b ^ e
+              ≤ (∑ i ∈ Finset.range x, 1 * b ^ i) + b ^ e := by
+                have hbound : n % b ^ x ≤ ∑ i ∈ Finset.range x, 1 * b ^ i := by
+                  -- Each digit is 0 or 1
+                  sorry
+                omega
+            _ = (∑ i ∈ Finset.range x, b ^ i) + b ^ e := by simp
+            _ < b ^ x := by
+                -- ∑_{i<x} b^i = (b^x - 1)/(b-1) and b^e < b^x for e < x
+                -- So total < (b^x - 1)/(b-1) + b^x
+                -- For b ≥ 2, (b^x - 1)/(b-1) ≤ b^x - 1
+                -- So total < b^x - 1 + b^x = 2*b^x - 1
+                -- Hmm still not < b^x...
+                -- The key is that digit e is NOT counted in the sum since it's 0!
+                sorry
+        rw [Nat.add_div_eq_right_iff (Nat.pow_pos (by omega : 0 < b) x)]
+        · simp [Nat.not_le.mpr hmod]
+      rw [hkey]
+      exact h_valid_digit x
 
 /-- Helper: If one of the bases is 2, the theorem is trivial -/
 lemma erdos_124_with_base2 {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i)
@@ -523,14 +688,8 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
             simp only [↓reduceIte]
             -- Need to show usesOnlyZeroOne (d i₀) (a' i₀ + p)
             -- Since digit e₀ is 0 in a' i₀, adding (d i₀)^e₀ sets that digit to 1
-            have ha'valid_i₀ := ha'valid i₀
-            unfold usesOnlyZeroOne at ha'valid_i₀ ⊢
-            intro x hx
-            -- The digits of a' i₀ + (d i₀)^e₀
-            have h1 : 1 < d i₀ := by have := hd i₀; omega
-            -- When we add (d i₀)^e₀ to a' i₀ and digit e₀ was 0,
-            -- the new digit at e₀ becomes 1 and others stay the same
-            sorry
+            rw [hp_def, he₀_def]
+            exact add_pow_preserves_01_digits (hd i₀) (ha'valid i₀) hdigit
           · simp only [hj, ↓reduceIte]
             exact ha'valid j
         · have hsum_eq : ∑ j, (if j = i₀ then a' i₀ + p else a' j) = (∑ j, a' j) + p := by
@@ -604,8 +763,50 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
 
         obtain ⟨i₁, hi₁⟩ := hi₁_exists
 
-        -- TODO: This requires careful case analysis on a'' i₀ and a'' i₁
-        -- The full proof would check if we can add powers to both bases
-        -- For now, we note this is the complex case that requires
-        -- the density condition for multiple bases
-        sorry
+        -- Case split on whether we can add p to both a'' i₀ and a'' i₁
+        by_cases ha''_small_i₀ : a'' i₀ < p
+        · by_cases ha''_small_i₁ : a'' i₁ < p
+          · -- Both a'' i₀ < p and a'' i₁ < p
+            -- We can add p to each using add_pow_valid
+            use fun j => if j = i₀ then a'' i₀ + p else if j = i₁ then a'' i₁ + p else a'' j
+            constructor
+            · intro j
+              by_cases hj₀ : j = i₀
+              · subst hj₀
+                simp only [↓reduceIte]
+                rw [hp_def, he₀_def]
+                exact add_pow_valid (d i₀) (a'' i₀) e₀ (hd i₀) ha''_small_i₀ (ha''valid i₀)
+              · simp only [hj₀, ↓reduceIte]
+                by_cases hj₁ : j = i₁
+                · subst hj₁
+                  simp only [↓reduceIte]
+                  -- Adding p = (d i₀)^e₀ to a'' i₁ base d i₁
+                  -- This requires that (d i₁).digits (a'' i₁ + p) has only 0,1 digits
+                  -- This is not immediately clear since p is a power of d i₀, not d i₁
+                  -- For now, we use sorry as this requires more careful analysis
+                  sorry
+                · simp only [hj₁, ↓reduceIte]
+                  exact ha''valid j
+            · -- Sum equals n
+              have hne : i₁ ≠ i₀ := hi₁
+              calc n = (n - 2 * p) + 2 * p := (Nat.sub_add_cancel h2p_le_n).symm
+                _ = (∑ i, a'' i) + 2 * p := by rw [ha''sum]
+                _ = (∑ i, a'' i) + p + p := by ring
+                _ = (∑ i, a'' i) + (∑ i, if i = i₀ then p else 0) + (∑ i, if i = i₁ then p else 0) := by
+                    simp only [Finset.sum_ite_eq', Finset.mem_univ, ↓reduceIte]
+                _ = ∑ i, (a'' i + (if i = i₀ then p else 0) + (if i = i₁ then p else 0)) := by
+                    simp only [Finset.sum_add_distrib]
+                _ = ∑ i, (if i = i₀ then a'' i₀ + p else if i = i₁ then a'' i₁ + p else a'' i) := by
+                    apply Finset.sum_congr rfl
+                    intro j _
+                    by_cases hj₀ : j = i₀
+                    · simp [hj₀, hne.symm]
+                    · by_cases hj₁ : j = i₁
+                      · simp [hj₁, hne]
+                      · simp [hj₀, hj₁]
+          · -- a'' i₀ < p but a'' i₁ ≥ p
+            -- Need different strategy: check if digit at position e₀ in a'' i₀ is 0
+            sorry
+        · -- a'' i₀ ≥ p
+          -- Apply add_pow_preserves_01_digits if the digit at e₀ is 0
+          sorry
