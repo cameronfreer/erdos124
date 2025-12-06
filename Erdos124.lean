@@ -377,6 +377,7 @@ For the Brown-based proof, we enumerate all powers d(i)^e across all bases in no
 -/
 
 /-- A power from one of our bases: (base index, exponent) -/
+@[ext]
 structure BasePower (k : ℕ) where
   idx : Fin k
   exp : ℕ
@@ -527,12 +528,70 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
     -- Use the Brown-based global power approach
     push_neg at hnk
 
-    -- The proof uses Brown's completeness lemma:
-    -- 1. Enumerate all powers d(i)^e in nondecreasing order
-    -- 2. The density condition ensures the step inequality holds
-    -- 3. Brown gives us a subset sum representation
+    -- The proof uses a finite version of Brown's completeness lemma:
+    -- 1. Collect all powers d(i)^e ≤ n across all bases
+    -- 2. The density condition ensures their sum ≥ n
+    -- 3. By the "complete sequence" property, we can achieve any sum up to the total
     -- 4. Group the chosen powers by base
 
-    -- For now, we use sorry as the full Brown infrastructure requires
-    -- constructing a nondecreasing enumeration of all powers
-    sorry
+    -- Step 1: Define the finite set of powers to consider
+    let P := powersUpTo k d n
+
+    -- Step 2: The sum of all these powers is at least n (from density condition)
+    -- This follows from: for each base i, sum of d_i^0 + ... + d_i^{e_i} = (d_i^{e_i+1} - 1)/(d_i - 1)
+    -- where e_i = largestExp(d_i, n), and d_i^{e_i+1} > n, so sum > n/(d_i - 1)
+    -- Summing over all i: total > n * ∑ 1/(d_i - 1) ≥ n
+    have hsum_ge : n ≤ ∑ p ∈ P, p.val d := by
+      -- Use capacity_lemma and geometric series summation
+      sorry
+
+    -- Step 3: Find a subset of P that sums to exactly n
+    -- This is the "complete sequence" property: if powers are listed in order
+    -- and each is at most 1 + sum of smaller ones, every sum up to total is achievable
+    have hsubset_sum : ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
+      -- Apply Brown-type subset sum argument
+      sorry
+
+    -- Step 4: Group the chosen powers by base index
+    obtain ⟨S, _hS_sub, hS_sum⟩ := hsubset_sum
+
+    -- For each base i, collect the exponents used from that base
+    let expsForBase (i : Fin k) : Finset ℕ := (S.filter (fun p => p.idx = i)).image BasePower.exp
+
+    -- Define a(i) as the sum of powers for base i
+    let a : Fin k → ℕ := fun i => ∑ e ∈ expsForBase i, d i ^ e
+
+    use a
+    constructor
+    · -- Each a(i) uses only 0,1 digits (it's a sum of distinct powers)
+      intro i
+      exact usesOnlyZeroOne_sum_distinct_powers (hd i) (expsForBase i)
+    · -- The sum equals n
+      -- Need to show: ∑ i, a i = ∑ p ∈ S, p.val d = n
+      have hsum_regroup : ∑ i : Fin k, a i = ∑ p ∈ S, p.val d := by
+        -- Regroup the double sum by swapping order
+        simp only [a, expsForBase, BasePower.val]
+        -- Use Finset.sum_fiberwise to regroup by idx
+        symm
+        rw [← Finset.sum_fiberwise_of_maps_to (g := fun p : BasePower k => p.idx)
+            (t := Finset.univ) (by simp)]
+        apply Finset.sum_congr rfl
+        intro i _
+        -- Need: sum over {p ∈ S | p.idx = i} of d p.idx ^ p.exp = sum over image exp of d i ^ e
+        -- First use that p.idx = i for all p in the filtered set
+        have hfilter_eq : ∀ p ∈ S.filter (fun p => p.idx = i), d p.idx ^ p.exp = d i ^ p.exp := by
+          intro p hp
+          simp only [Finset.mem_filter] at hp
+          rw [hp.2]
+        conv_lhs => arg 2; ext p; rw [show d p.idx ^ p.exp = d p.idx ^ p.exp by rfl]
+        rw [Finset.sum_congr rfl (fun p hp => hfilter_eq p hp)]
+        -- Now sum over filter is sum over image
+        rw [Finset.sum_image]
+        intro p₁ hp₁ p₂ hp₂ he
+        have hp₁' := Finset.mem_filter.mp hp₁
+        have hp₂' := Finset.mem_filter.mp hp₂
+        have hidx_eq : p₁.idx = p₂.idx := hp₁'.2.trans hp₂'.2.symm
+        cases p₁; cases p₂
+        simp only [BasePower.mk.injEq]
+        exact ⟨hidx_eq, he⟩
+      rw [hsum_regroup, hS_sum]
