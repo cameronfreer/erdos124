@@ -493,6 +493,54 @@ lemma density_key' {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (hk : 
     exact_mod_cast (Nat.lt_succ_self k)
   linarith
 
+/-- If the minimal base is k+1, it cannot be unique (density forces a duplicate). -/
+lemma density_duplicate_when_max {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (i₀ : Fin k) (hi₀_eq : d i₀ = k + 1)
+    (hi₀_min : ∀ j, d i₀ ≤ d j) :
+    ∃ j : Fin k, j ≠ i₀ ∧ d j = k + 1 := by
+  -- If d i₀ = k + 1 is the unique minimum, the density sum < 1, contradiction
+  by_contra h
+  push_neg at h
+  -- All other bases j ≠ i₀ have d_j ≠ k + 1, so d_j ≥ k + 2 (since d i₀ = k + 1 is min)
+  have hothers : ∀ j, j ≠ i₀ → d j ≥ k + 2 := by
+    intro j hj
+    have hne : d j ≠ k + 1 := h j hj
+    have hge : d j ≥ d i₀ := hi₀_min j
+    rw [hi₀_eq] at hge
+    omega
+  -- i₀ contributes 1/k
+  have hi₀_contrib : (1 : ℚ) / (d i₀ - 1) = 1 / k := by
+    rw [hi₀_eq]; simp
+  -- Each other base contributes ≤ 1/(k+1)
+  have hother_contrib : ∀ j, j ≠ i₀ → (1 : ℚ) / (d j - 1) ≤ 1 / (k + 1) := by
+    intro j hj
+    have hge : d j ≥ k + 2 := hothers j hj
+    have hpos : (0 : ℚ) < k + 1 := by positivity
+    have hcast : (d j : ℚ) - 1 ≥ k + 1 := by
+      have : (k + 2 : ℕ) ≤ d j := hge
+      have h1 : (k + 2 : ℚ) ≤ (d j : ℚ) := by exact_mod_cast this
+      linarith
+    exact one_div_le_one_div_of_le hpos hcast
+  -- Total sum ≤ 1/k + (k-1)/(k+1) < 1 for k ≥ 2
+  -- i₀ contributes 1/k, each other j ≠ i₀ contributes ≤ 1/(k+1) (since d j ≥ k + 2)
+  -- Total ≤ 1/k + (k-1)/(k+1) = (k² + 1)/(k² + k) < 1 for k ≥ 2
+  -- Proof: (k² + 1)/(k² + k) < 1 ⟺ k² + 1 < k² + k ⟺ 1 < k ✓
+  have htotal_lt : ∑ i : Fin k, (1 : ℚ) / (d i - 1) < 1 := by sorry
+  linarith
+
+/-- Either the minimal base is ≤ k (can use ones), or there's a duplicate (can use other base) -/
+lemma density_small_or_dup {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (i₀ : Fin k) (hi₀ : d i₀ ≤ k + 1)
+    (hi₀_min : ∀ j, d i₀ ≤ d j) :
+    d i₀ ≤ k ∨ ∃ j : Fin k, j ≠ i₀ ∧ d j = d i₀ := by
+  by_cases hle : d i₀ ≤ k
+  · left; exact hle
+  · right
+    push_neg at hle
+    have heq : d i₀ = k + 1 := by omega
+    obtain ⟨j, hj_ne, hj_eq⟩ := density_duplicate_when_max hd hk hsum i₀ heq hi₀_min
+    exact ⟨j, hj_ne, by rw [heq]; exact hj_eq⟩
+
 /-- Subset sum with strengthened invariant: if target ≤ k, only ones are used.
     This stronger statement enables the inductive proof to work. -/
 lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
@@ -550,8 +598,14 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
     -- Inductive case: n > k
     push_neg at hnk
 
+    -- Get the ACTUAL minimum base (not just some small base)
+    have hFin_nonempty : Nonempty (Fin k) := Fin.pos_iff_nonempty.mp (by omega : 0 < k)
+    obtain ⟨i₀, hi₀_min⟩ := Finite.exists_min d
     -- By density, min(d_i) ≤ k + 1
-    obtain ⟨i₀, hi₀⟩ := density_key' hd hk hsum
+    have hi₀ : d i₀ ≤ k + 1 := by
+      obtain ⟨i, hi⟩ := density_key' hd hk hsum
+      calc d i₀ ≤ d i := hi₀_min i
+           _ ≤ k + 1 := hi
     have hdi₀ : 2 ≤ d i₀ := hd i₀
     have hmin_le_n : d i₀ ≤ n := le_trans hi₀ (by omega : k + 1 ≤ n)
 
@@ -661,21 +715,17 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
             obtain ⟨j, hj_ne⟩ := hother_base
 
             -- EDGE CASE: Both (i₀, 1) ∈ S' and (i₀, 2) ∈ S''
-            -- Strategy: Use base j instead.
-            --
-            -- By density condition with k ≥ 2:
-            -- - If d i₀ = k + 1 (maximum), density forces d_j = d i₀ for some j ≠ i₀
-            -- - If d i₀ ≤ k, we can use d i₀ ones instead
-            --
-            -- Key insight: S'' sums to n - d i₀², contains (i₀, 2) with value d i₀².
-            -- Let T = S'' \ {(i₀, 2)}, which sums to n - 2*d i₀².
-            -- We need to add 2*d i₀² = d i₀ * (2 * d i₀).
-            --
-            -- Alternative: Use the IH with target (n - d_j) for some j ≠ i₀
-            -- and avoid using base i₀ powers entirely.
-            --
-            -- TODO: Implement the density-based alternative base selection
-            sorry
+            -- Use density_small_or_dup to find an alternative
+            rcases density_small_or_dup hd hk hsum i₀ hi₀ hi₀_min with hsmall | ⟨j', hj'_ne, hj'_eq⟩
+            · -- Case: d i₀ ≤ k - use alternative base construction
+              -- This case requires careful handling of base selection
+              -- The density condition ensures enough flexibility exists
+              -- TODO: Implement the detailed case analysis
+              sorry
+            · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
+              -- (j', 2) has value d j'² = d i₀², use it instead
+              -- This case has deep nesting; defer to systematic implementation
+              sorry
           · -- (i₀, 2) ∉ S'', can add it
             have hi2_notin : (⟨i₀, 2⟩ : BasePower k) ∉ S'' := hi2_in
             refine ⟨insert ⟨i₀, 2⟩ S'', ?_, ?_, ?_⟩
@@ -701,28 +751,164 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
 
       · -- d i₀² > n, can't use (i₀, 2)
         -- EDGE CASE: (i₀, 1) ∈ S' but we can't use (i₀, 2) since d i₀² > n
-        --
-        -- Key constraints:
-        -- - d i₀ ≤ k + 1 (from density_key')
-        -- - n > k, n - d i₀ > k
-        -- - d i₀² > n, so d i₀ > sqrt(n)
-        -- - (i₀, 1) ∈ S', so n - d i₀ ≥ d i₀, meaning n ≥ 2*d i₀
-        --
-        -- From n ≥ 2*d i₀ and d i₀² > n: d i₀² > 2*d i₀, so d i₀ > 2, meaning d i₀ ≥ 3
-        --
-        -- Strategy: Use a different base j.
-        -- By density condition with d i₀ ≥ 3 and k ≥ 2:
-        -- - If d i₀ = k + 1 (maximum for density), there must be j ≠ i₀ with d_j = d i₀
-        -- - If d i₀ ≤ k, we can use d i₀ ones to contribute d i₀ instead of (i₀, 1)
-        --
-        -- In either case, we can construct an alternative subset:
-        -- - Use S' \ {(i₀, 1)} (sums to n - 2*d i₀)
-        -- - Add either (j, 1) with d_j = d i₀, or d i₀ ones
-        -- - Add (i₀, 1)
-        -- - Total: (n - 2*d i₀) + d i₀ + d i₀ = n ✓
-        --
-        -- TODO: Implement the density-based alternative construction
+        -- Use density_small_or_dup to find an alternative base
+
+        -- This case requires careful analysis of base switching
         sorry
+
+/-  COMMENTED OUT - Complex edge case handling has issues
+    Simplified to sorry above for now
+        -- First, from hS'_ge we know n - d i₀ ≥ d i₀, so n ≥ 2*d i₀
+        -- Combined with d i₀² > n gives d i₀ > 2, so d i₀ ≥ 3
+        push_neg at hpow2_dead
+        have hn_ge_2 : n ≥ 2 * d i₀ := by omega
+        have hdi₀_gt_2 : d i₀ > 2 := by nlinarith
+        have hdi₀_ge_3 : d i₀ ≥ 3 := by omega
+
+        rcases density_small_or_dup hd hk hsum i₀ hi₀ hi₀_min with hsmall | ⟨j, hj_ne, hj_eq⟩
+        · -- Case: d i₀ ≤ k
+          -- With d i₀ ≤ k and k ≥ 2 bases, use a different base j ≠ i₀
+          have hother_base : ∃ j : Fin k, j ≠ i₀ := by
+            by_contra h
+            push_neg at h
+            have : Fintype.card (Fin k) = 1 := Fintype.card_eq_one_iff.mpr ⟨i₀, fun j => h j⟩
+            simp [Fintype.card_fin] at this
+            omega
+          obtain ⟨j, hj_ne⟩ := hother_base
+          have hj_ge : d j ≥ d i₀ := hi₀_min j
+          have hj_le_n : d j ≤ n := le_trans hj_ge hmin_le_n
+
+          -- Apply IH to n - d j
+          by_cases hdj_eq_n : n = d j
+          · refine ⟨{⟨j, 1⟩}, ?_, ?_, ?_⟩
+            · intro p hp; simp at hp; simp [hp, BasePower.val, hdj_eq_n]
+            · simp [BasePower.val, hdj_eq_n]
+            · intro hcontra; omega
+          · have hdj_lt_n : d j < n := Nat.lt_of_le_of_ne hj_le_n (Ne.symm hdj_eq_n)
+            have hremainj_pos : 0 < n - d j := Nat.sub_pos_of_lt hdj_lt_n
+            have hremainj_lt : n - d j < n := Nat.sub_lt (by omega) (by omega : 0 < d j)
+            obtain ⟨Sj, hSj_bound, hSj_sum, _⟩ := ih (n - d j) hremainj_lt hremainj_pos
+            by_cases hj1_in_Sj : (⟨j, 1⟩ : BasePower k) ∈ Sj
+            · -- (j, 1) ∈ Sj, check if d j² ≤ n
+              by_cases hdjpow2 : d j ^ 2 ≤ n
+              · have hremainj2_lt : n - d j ^ 2 < n := Nat.sub_lt (by omega) (by positivity)
+                by_cases hremainj2_pos : 0 < n - d j ^ 2
+                · obtain ⟨Sj', hSj'_bound, hSj'_sum, _⟩ := ih (n - d j ^ 2) hremainj2_lt hremainj2_pos
+                  by_cases hj2_in_Sj' : (⟨j, 2⟩ : BasePower k) ∈ Sj'
+                  · exfalso; omega  -- Too many constraints for this deep case
+                  · refine ⟨insert ⟨j, 2⟩ Sj', ?_, ?_, ?_⟩
+                    · intro p hp
+                      rw [Finset.mem_insert] at hp
+                      rcases hp with rfl | hp
+                      · simp [BasePower.val]; exact hdjpow2
+                      · calc BasePower.val d p ≤ n - d j ^ 2 := hSj'_bound p hp
+                          _ ≤ n := Nat.sub_le _ _
+                    · rw [Finset.sum_insert hj2_in_Sj', hSj'_sum]
+                      simp only [BasePower.val]; omega
+                    · intro hcontra; omega
+                · -- n = d j ^ 2
+                  have hn_eq_j2 : n = d j ^ 2 := by omega
+                  refine ⟨{⟨j, 2⟩}, ?_, ?_, ?_⟩
+                  · intro p hp; simp at hp; simp [hp, BasePower.val, hn_eq_j2]
+                  · simp [BasePower.val, hn_eq_j2]
+                  · intro hcontra; have := hd j; nlinarith
+              · -- d j² > n and (j, 1) ∈ Sj
+                -- Similar to above: Sj sums to n - d j, contains (j, 1) with value d j
+                -- So n - d j ≥ d j, giving n ≥ 2*d j
+                -- With d j² > n ≥ 2*d j we get d j > 2
+                exfalso
+                have hSj_ge : d j ≤ ∑ p ∈ Sj, p.val d := by
+                  calc d j = (⟨j, 1⟩ : BasePower k).val d := by simp [BasePower.val]
+                    _ ≤ ∑ p ∈ Sj, p.val d := Finset.single_le_sum (fun p _ => Nat.zero_le _) hj1_in_Sj
+                rw [hSj_sum] at hSj_ge
+                push_neg at hdjpow2
+                have hdj_gt_2 : d j > 2 := by nlinarith
+                omega
+            · refine ⟨insert ⟨j, 1⟩ Sj, ?_, ?_, ?_⟩
+              · intro p hp
+                rw [Finset.mem_insert] at hp
+                rcases hp with rfl | hp
+                · simp [BasePower.val]; exact le_of_lt hdj_lt_n
+                · calc BasePower.val d p ≤ n - d j := hSj_bound p hp
+                    _ ≤ n := Nat.sub_le _ _
+              · rw [Finset.sum_insert hj1_in_Sj, hSj_sum]
+                simp only [BasePower.val, pow_one]; omega
+              · intro hcontra; omega
+        · -- Case: ∃ j ≠ i₀ with d j = d i₀
+          -- Use (j, 1) instead of (i₀, 1)
+          have hj_le_n : d j ≤ n := by rw [hj_eq]; exact hmin_le_n
+          by_cases hdj_eq_n : n = d j
+          · refine ⟨{⟨j, 1⟩}, ?_, ?_, ?_⟩
+            · intro p hp; simp at hp; simp [hp, BasePower.val, hdj_eq_n]
+            · simp [BasePower.val, hdj_eq_n]
+            · intro hcontra; omega
+          · have hdj_lt_n : d j < n := Nat.lt_of_le_of_ne hj_le_n (Ne.symm hdj_eq_n)
+            have hremainj_pos : 0 < n - d j := Nat.sub_pos_of_lt hdj_lt_n
+            have hremainj_lt : n - d j < n := Nat.sub_lt (by omega) (by rw [hj_eq]; omega)
+            obtain ⟨Sj, hSj_bound, hSj_sum, _⟩ := ih (n - d j) hremainj_lt hremainj_pos
+            by_cases hj1_in : (⟨j, 1⟩ : BasePower k) ∈ Sj
+            · -- (j, 1) ∈ Sj, try (j, 2)
+              -- d j² = d i₀² > n, so can't use (j, 2) either
+              -- But we can use the fact that S' already sums to n - d i₀ = n - d j
+              -- Reuse S' and replace (i₀, 1) with (j, 1)
+              have hS'_val_i₀ : (⟨i₀, 1⟩ : BasePower k).val d = d i₀ := by simp [BasePower.val]
+              have hne : (⟨i₀, 1⟩ : BasePower k) ≠ ⟨j, 1⟩ := by
+                simp [BasePower.ext_iff]; exact Ne.symm hj_ne
+              -- S' \ {(i₀, 1)} sums to n - d i₀ - d i₀ = n - 2*d i₀
+              let T := S'.erase ⟨i₀, 1⟩
+              have hT_sum : ∑ p ∈ T, p.val d = n - 2 * d i₀ := by
+                have h1 : ∑ p ∈ S', p.val d = ∑ p ∈ T, p.val d + (⟨i₀, 1⟩ : BasePower k).val d := by
+                  rw [Finset.sum_erase_add S' _ hi1_in]
+                rw [hS'_sum, hS'_val_i₀] at h1
+                omega
+              -- Check if (j, 1) ∈ T
+              by_cases hj1_in_T : (⟨j, 1⟩ : BasePower k) ∈ T
+              · -- T contains (j, 1) too, use a third base or give up
+                exfalso
+                -- T sums to n - 2*d i₀, contains (j, 1) with value d j = d i₀
+                -- So n - 2*d i₀ ≥ d i₀, giving n ≥ 3*d i₀
+                have hT_ge : d j ≤ ∑ p ∈ T, p.val d := by
+                  calc d j = (⟨j, 1⟩ : BasePower k).val d := by simp [BasePower.val]
+                    _ ≤ ∑ p ∈ T, p.val d := Finset.single_le_sum (fun p _ => Nat.zero_le _) hj1_in_T
+                rw [hT_sum, hj_eq] at hT_ge
+                have hn_ge_3 : n ≥ 3 * d i₀ := by omega
+                -- With n ≥ 3*d i₀ and d i₀² > n, we get d i₀² > 3*d i₀, so d i₀ > 3
+                have hdi₀_gt_3 : d i₀ > 3 := by nlinarith
+                -- But d i₀ ≤ k + 1, so k ≥ 3
+                -- This should be reachable but we need more sophisticated handling
+                omega
+              · -- T doesn't contain (j, 1), use T ∪ {(i₀, 1), (j, 1)}
+                have hi1_notin_T : (⟨i₀, 1⟩ : BasePower k) ∉ T := Finset.not_mem_erase _ _
+                refine ⟨insert ⟨j, 1⟩ (insert ⟨i₀, 1⟩ T), ?_, ?_, ?_⟩
+                · intro p hp
+                  rw [Finset.mem_insert] at hp
+                  rcases hp with rfl | hp
+                  · simp [BasePower.val, hj_eq]; exact hmin_le_n
+                  · rw [Finset.mem_insert] at hp
+                    rcases hp with rfl | hp
+                    · simp [BasePower.val]; exact hmin_le_n
+                    · have hp' : p ∈ S' := Finset.mem_of_mem_erase hp
+                      calc BasePower.val d p ≤ n - d i₀ := hS'_bound p hp'
+                        _ ≤ n := Nat.sub_le _ _
+                · have hne' : (⟨j, 1⟩ : BasePower k) ∉ insert ⟨i₀, 1⟩ T := by
+                    rw [Finset.mem_insert]
+                    push_neg
+                    exact ⟨hne.symm, hj1_notin_T⟩
+                  rw [Finset.sum_insert hne', Finset.sum_insert hi1_notin_T, hT_sum]
+                  simp only [BasePower.val, pow_one, hj_eq]
+                  omega
+                · intro hcontra; omega
+            · refine ⟨insert ⟨j, 1⟩ Sj, ?_, ?_, ?_⟩
+              · intro p hp
+                rw [Finset.mem_insert] at hp
+                rcases hp with rfl | hp
+                · simp [BasePower.val]; exact le_of_lt hdj_lt_n
+                · calc BasePower.val d p ≤ n - d j := hSj_bound p hp
+                    _ ≤ n := Nat.sub_le _ _
+              · rw [Finset.sum_insert hj1_in, hSj_sum]
+                simp only [BasePower.val, pow_one]; omega
+              · intro hcontra; omega
+-/
 
     · -- (i₀, 1) ∉ S', can safely add it
       refine ⟨insert ⟨i₀, 1⟩ S', ?_, ?_, ?_⟩
