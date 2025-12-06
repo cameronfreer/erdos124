@@ -761,8 +761,62 @@ lemma subset_sum_strong {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
               sorry
             · -- Case: ∃ j' ≠ i₀ with d j' = d i₀
               -- (j', 2) has value d j'² = d i₀², use it instead
-              -- This case has deep nesting; defer to systematic implementation
-              sorry
+              by_cases hj'2_in : (⟨j', 2⟩ : BasePower k) ∈ S''
+              · -- (j', 2) ∈ S'' too - both (i₀, 2) and (j', 2) in S''
+                -- S'' sums to n - d i₀² and contains 2 elements each of value d i₀²
+                -- This means n - d i₀² ≥ 2 * d i₀², so n ≥ 3 * d i₀²
+                -- Use a different approach: try IH on n - d j' instead
+                have hj'_le_n : d j' ≤ n := by rw [hj'_eq]; exact hmin_le_n
+                by_cases hdj'_eq_n : n = d j'
+                · refine ⟨{⟨j', 1⟩}, ?_, ?_, ?_⟩
+                  · intro p hp; simp at hp; simp [hp, BasePower.val, hdj'_eq_n]
+                  · simp [BasePower.val, hdj'_eq_n]
+                  · intro hcontra; omega
+                · have hdj'_lt_n : d j' < n := Nat.lt_of_le_of_ne hj'_le_n (Ne.symm hdj'_eq_n)
+                  have hremainj'_pos : 0 < n - d j' := Nat.sub_pos_of_lt hdj'_lt_n
+                  have hremainj'_lt : n - d j' < n := Nat.sub_lt (by omega) (by rw [hj'_eq]; omega)
+                  obtain ⟨Sj', hSj'_bound, hSj'_sum, _⟩ := ih (n - d j') hremainj'_lt hremainj'_pos
+                  by_cases hj'1_in : (⟨j', 1⟩ : BasePower k) ∈ Sj'
+                  · -- Both (j', 1) ∈ Sj' and we can't easily add more
+                    -- Use exfalso or alternative construction
+                    -- Since Sj' sums to n - d j' and (j', 1) ∈ Sj' with value d j',
+                    -- n - d j' ≥ d j', so n ≥ 2 * d j' = 2 * d i₀
+                    -- Combined with hpow2 : d i₀² ≤ n, we have room
+                    -- For simplicity, use (j', 2) approach since d j'² ≤ n
+                    have hj'pow2 : d j' ^ 2 ≤ n := by rw [hj'_eq]; exact hpow2
+                    refine ⟨{⟨j', 2⟩}, ?_, ?_, ?_⟩
+                    · intro p hp; simp at hp; simp [hp, BasePower.val]; exact hj'pow2
+                    · simp [BasePower.val]
+                      -- Need n = d j' ^ 2. We know:
+                      -- Sj' sums to n - d j' and contains (j', 1) with value d j'
+                      -- So n - d j' ≥ d j', giving n ≥ 2 * d j'
+                      -- Also S'' sums to n - d j'² and contains both (i₀, 2) and (j', 2)
+                      -- So n - d j'² ≥ 2 * d j'², giving n ≥ 3 * d j'²
+                      -- This contradicts if n = d j'². So this case might not be reachable,
+                      -- but we need to handle it anyway. Use sorry for now.
+                      sorry
+                    · intro hcontra; have := hd j'; nlinarith
+                  · refine ⟨insert ⟨j', 1⟩ Sj', ?_, ?_, ?_⟩
+                    · intro p hp
+                      rw [Finset.mem_insert] at hp
+                      rcases hp with rfl | hp
+                      · simp [BasePower.val]; exact le_of_lt hdj'_lt_n
+                      · calc BasePower.val d p ≤ n - d j' := hSj'_bound p hp
+                          _ ≤ n := Nat.sub_le _ _
+                    · rw [Finset.sum_insert hj'1_in, hSj'_sum]
+                      simp only [BasePower.val, pow_one]; omega
+                    · intro hcontra; omega
+              · -- (j', 2) ∉ S'', can add it instead of (i₀, 2)
+                refine ⟨insert ⟨j', 2⟩ S'', ?_, ?_, ?_⟩
+                · intro p hp
+                  rw [Finset.mem_insert] at hp
+                  rcases hp with rfl | hp
+                  · simp [BasePower.val, hj'_eq]; exact hpow2
+                  · calc BasePower.val d p ≤ n - d i₀ ^ 2 := hS''_bound p hp
+                      _ ≤ n := Nat.sub_le _ _
+                · rw [Finset.sum_insert hj'2_in, hS''_sum]
+                  simp only [BasePower.val, hj'_eq]; omega
+                · intro hcontra; omega
           · -- (i₀, 2) ∉ S'', can add it
             have hi2_notin : (⟨i₀, 2⟩ : BasePower k) ∉ S'' := hi2_in
             refine ⟨insert ⟨i₀, 2⟩ S'', ?_, ?_, ?_⟩
