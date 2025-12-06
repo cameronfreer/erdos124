@@ -290,19 +290,136 @@ lemma usesOnlyZeroOne_base2 (n : ℕ) : usesOnlyZeroOne 2 n := by
   have h := Nat.digits_lt_base (by omega : 1 < 2) (List.mem_toFinset.mp hx)
   omega
 
-/-- When adding b^e to n where digit e is 0, preserves 0,1 digit property.
-The key insight: digit e becomes 1, all other digits unchanged (no carry). -/
-lemma add_pow_preserves_01_digits {b n e : ℕ} (_hb : 2 ≤ b)
-    (_hvalid : usesOnlyZeroOne b n)
-    (_hdigit_zero : (Nat.digits b n).getD e 0 = 0) :
-    usesOnlyZeroOne b (n + b ^ e) := by
-  -- Proof outline:
-  -- Key lemma: (digits b n).getD i 0 = n / b^i % b (Nat.getD_digits)
-  -- Since digit e = 0 (hypothesis), adding b^e doesn't cause carries past position e.
-  -- For position j:
-  --   j < e: (n + b^e) / b^j = n / b^j + b^(e-j), mod b unchanged
-  --   j = e: digit becomes (0 + 1) mod b = 1
-  --   j > e: (n + b^e) / b^j = n / b^j (no carry since n % b^(e+1) + b^e < b^(e+1))
+/-!
+## Brown's Completeness Lemma
+
+A key tool: if a nondecreasing sequence `a` satisfies `a(n+1) ≤ 1 + ∑_{i≤n} a(i)`,
+then every natural number is representable as a finite subset sum of the sequence.
+-/
+
+/-- Partial sum of the first n terms (indices 0 to n-1) -/
+def partialSum (a : ℕ → ℕ) (n : ℕ) : ℕ := ∑ i ∈ Finset.range n, a i
+
+/-- Brown's completeness lemma (finite version):
+The set of achievable subset sums from {a(0), ..., a(n-1)} is exactly {0, 1, ..., partialSum a n}
+when the step condition holds. -/
+lemma brown_achievable_range (a : ℕ → ℕ) (h0 : a 0 = 1)
+    (hstep : ∀ m, a (m + 1) ≤ 1 + partialSum a (m + 1)) :
+    ∀ n, ∀ k ≤ partialSum a n, ∃ s : Finset ℕ, (∀ i ∈ s, i < n) ∧ ∑ i ∈ s, a i = k := by
+  intro n
+  induction n with
+  | zero =>
+    intro k hk
+    simp only [partialSum, Finset.range_zero, Finset.sum_empty, Nat.le_zero] at hk
+    subst hk
+    exact ⟨∅, by simp, by simp⟩
+  | succ n ih =>
+    intro k hk
+    -- partialSum a (n+1) = partialSum a n + a n
+    have hsum_succ : partialSum a (n + 1) = partialSum a n + a n := by
+      simp only [partialSum, Finset.sum_range_succ]
+    by_cases hk_small : k ≤ partialSum a n
+    · -- k is achievable from first n terms
+      obtain ⟨s, hs_bound, hs_sum⟩ := ih k hk_small
+      exact ⟨s, fun i hi => Nat.lt_succ_of_lt (hs_bound i hi), hs_sum⟩
+    · -- k > partialSum a n, so we need to use a n
+      push_neg at hk_small
+      have hk_bound : k - a n ≤ partialSum a n := by
+        rw [hsum_succ] at hk
+        omega
+      -- k - a n is achievable from first n terms
+      obtain ⟨s, hs_bound, hs_sum⟩ := ih (k - a n) hk_bound
+      have hn_notin : n ∉ s := fun h => Nat.lt_irrefl n (hs_bound n h)
+      use insert n s
+      constructor
+      · intro i hi
+        simp only [Finset.mem_insert] at hi
+        rcases hi with rfl | hi
+        · exact Nat.lt_succ_self _
+        · exact Nat.lt_succ_of_lt (hs_bound i hi)
+      · rw [Finset.sum_insert hn_notin, hs_sum]
+        have han_le : a n ≤ k := by
+          -- From step condition: a n ≤ 1 + partialSum a n < k + 1 (since k > partialSum a n)
+          have hstep_n : a n ≤ 1 + partialSum a n := by
+            have := hstep (n - 1)
+            cases n with
+            | zero => simp [h0, partialSum]
+            | succ n' =>
+              simp only [Nat.succ_sub_one] at this
+              exact this
+          omega
+        omega
+
+/-- Brown's completeness lemma: every natural number is a finite subset sum -/
+theorem brown_complete (a : ℕ → ℕ) (h0 : a 0 = 1)
+    (hpos : ∀ n, 0 < a n)  -- Need positivity assumption
+    (hstep : ∀ m, a (m + 1) ≤ 1 + partialSum a (m + 1)) :
+    ∀ N, ∃ s : Finset ℕ, ∑ i ∈ s, a i = N := by
+  intro N
+  -- Find n large enough that partialSum a n ≥ N
+  have hgrows : ∀ n, n ≤ partialSum a n := by
+    intro n
+    induction n with
+    | zero => simp [partialSum]
+    | succ n ih =>
+      have hsum_succ : partialSum a (n + 1) = partialSum a n + a n := by
+        simp only [partialSum, Finset.sum_range_succ]
+      have han_pos : 0 < a n := hpos n
+      omega
+  have hN_le : N ≤ partialSum a N := hgrows N
+  obtain ⟨s, _, hs_sum⟩ := brown_achievable_range a h0 hstep N N hN_le
+  exact ⟨s, hs_sum⟩
+
+/-!
+## Global Power Enumeration
+
+For the Brown-based proof, we enumerate all powers d(i)^e across all bases in nondecreasing order.
+-/
+
+/-- A power from one of our bases: (base index, exponent) -/
+structure BasePower (k : ℕ) where
+  idx : Fin k
+  exp : ℕ
+  deriving DecidableEq
+
+/-- The value of a base power given the bases -/
+def BasePower.val {k : ℕ} (d : Fin k → ℕ) (p : BasePower k) : ℕ :=
+  d p.idx ^ p.exp
+
+/-- All powers up to value bound M: { (i, e) : d(i)^e ≤ M } -/
+def powersUpTo (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
+  (Finset.univ (α := Fin k) ×ˢ Finset.range (M + 1)).filter (fun p => d p.1 ^ p.2 ≤ M) |>.map
+    ⟨fun p => ⟨p.1, p.2⟩, fun _ _ h => by simp only [BasePower.mk.injEq] at h; ext <;> simp [h.1, h.2]⟩
+
+/-- The sum of all powers up to M -/
+lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
+    ∑ p ∈ powersUpTo k d M, p.val d =
+    ∑ i : Fin k, ∑ e ∈ Finset.range (M + 1), if d i ^ e ≤ M then d i ^ e else 0 := by
+  unfold powersUpTo BasePower.val
+  rw [Finset.sum_map]
+  simp only [Function.Embedding.coeFn_mk, Finset.sum_filter, Finset.sum_product]
+
+/-- Key density lemma: the sum of (d_i^{e+1} - 1)/(d_i - 1) over all bases bounds n
+when each d_i^{e_i} ≤ n < d_i^{e_i+1} -/
+lemma density_bound_for_powers {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
+    {M : ℕ} (hM : 0 < M) :
+    (M : ℚ) ≤ ∑ i : Fin k, (((Nat.log (d i) M + 1) : ℕ) : ℚ) * ((d i - 1 : ℕ) : ℚ)⁻¹ *
+      ((d i : ℚ) ^ (Nat.log (d i) M + 1) - 1) / ((d i : ℚ) - 1) := by
+  -- This follows from the capacity lemma and geometric series
+  sorry
+
+/-- The step inequality: each new power is at most 1 + sum of all smaller powers.
+This is the key property that makes Brown's lemma applicable. -/
+lemma step_inequality_from_density {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
+    (a : ℕ → ℕ) (ha_enum : ∀ n, ∃ p : BasePower k, a n = p.val d)
+    (ha_mono : Monotone a) (ha_0 : a 0 = 1)
+    (ha_complete : ∀ i e, ∃ n, a n = d i ^ e) :
+    ∀ m, a (m + 1) ≤ 1 + partialSum a (m + 1) := by
+  -- This follows from the density condition.
+  -- The key is that the sum of all powers ≤ a(m) is at least a(m) * ∑ 1/(d_i - 1) ≥ a(m)
+  -- So a(m+1) ≤ smallest power > a(m) ≤ 1 + sum of powers ≤ a(m)
   sorry
 
 /-- Helper: If one of the bases is 2, the theorem is trivial -/
@@ -406,245 +523,16 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
           exact hcard
         simp only [hsum_eq]
 
-    -- Case 2: n > k (need larger powers, more complex argument)
+    -- Case 2: n > k (need larger powers)
+    -- Use the Brown-based global power approach
     push_neg at hnk
 
-    -- Key helper: adding a power to a smaller number preserves 0,1 digits
-    -- Proof idea: when m < b^e, the digits of m have length ≤ e.
-    -- So m + b^e = ofDigits b (digits(m) ++ zeros ++ [1]) where all entries are ≤ 1.
-    have add_pow_valid : ∀ (b m e : ℕ), 2 ≤ b → m < b ^ e →
-        usesOnlyZeroOne b m → usesOnlyZeroOne b (m + b ^ e) := by
-      intro b m e hb hm hvalid
-      by_cases hm_zero : m = 0
-      · simp only [hm_zero, zero_add]
-        exact usesOnlyZeroOne_pow hb e
-      · have h1 : 1 < b := by omega
-        -- Key: m < b^e implies length of digits ≤ e
-        have hlen : (Nat.digits b m).length ≤ e := by
-          by_contra hlen'
-          push_neg at hlen'
-          have hge := Nat.base_pow_length_digits_le b m h1 hm_zero
-          have hb_pos : 0 < b := by omega
-          have hlen_pos : 0 < (Nat.digits b m).length :=
-            List.length_pos_of_ne_nil (Nat.digits_ne_nil_iff_ne_zero.mpr hm_zero)
-          have hpow_le_m : b ^ ((Nat.digits b m).length - 1) ≤ m := by
-            have : b ^ (Nat.digits b m).length = b ^ ((Nat.digits b m).length - 1) * b := by
-              rw [← Nat.pow_succ, Nat.succ_eq_add_one, Nat.sub_add_cancel hlen_pos]
-            calc b ^ ((Nat.digits b m).length - 1)
-                = b ^ (Nat.digits b m).length / b := by
-                    rw [this, Nat.mul_div_cancel _ hb_pos]
-              _ ≤ b * m / b := Nat.div_le_div_right hge
-              _ = m := Nat.mul_div_cancel_left m hb_pos
-          have he_bound : e ≤ (Nat.digits b m).length - 1 := by omega
-          have : b ^ e ≤ m := calc
-            b ^ e ≤ b ^ ((Nat.digits b m).length - 1) := Nat.pow_le_pow_right (by omega) he_bound
-            _ ≤ m := hpow_le_m
-          omega
+    -- The proof uses Brown's completeness lemma:
+    -- 1. Enumerate all powers d(i)^e in nondecreasing order
+    -- 2. The density condition ensures the step inequality holds
+    -- 3. Brown gives us a subset sum representation
+    -- 4. Group the chosen powers by base
 
-        -- Use digits_append_zeroes_append_digits
-        set len := (Nat.digits b m).length
-        have hexp_eq : len + (e - len) = e := Nat.add_sub_cancel' hlen
-        have hdigits_eq : Nat.digits b (m + b ^ e) =
-            Nat.digits b m ++ List.replicate (e - len) 0 ++ Nat.digits b 1 := by
-          have hrhs := Nat.digits_append_zeroes_append_digits h1 (m := 1) (k := e - len) (n := m)
-            (by omega : 0 < 1)
-          simp only [mul_one] at hrhs
-          rw [hexp_eq] at hrhs
-          exact hrhs.symm
-
-        have hdigits_one : Nat.digits b 1 = [1] := by
-          rw [Nat.digits_def' h1 (by omega : 0 < 1)]
-          simp only [Nat.mod_eq_of_lt h1, Nat.div_eq_of_lt h1, Nat.digits_zero]
-
-        unfold usesOnlyZeroOne at hvalid ⊢
-        rw [hdigits_eq, hdigits_one]
-        intro x hx
-        simp only [List.toFinset_append, Finset.mem_union] at hx
-        rcases hx with (hx | hx) | hx
-        · exact hvalid hx
-        · by_cases hz : e - len = 0
-          · simp [hz] at hx
-          · rw [List.toFinset_replicate_of_ne_zero hz] at hx
-            simp only [Finset.mem_singleton] at hx
-            simp [hx]
-        · simp only [List.toFinset_cons, List.toFinset_nil, Finset.insert_empty,
-            Finset.mem_singleton] at hx
-          simp [hx]
-
-    -- Find base 0 and its largest power
-    have hk_pos : 0 < k := by omega
-    set i₀ : Fin k := ⟨0, hk_pos⟩ with hi₀_def
-    set e₀ := largestExp (d i₀) n with he₀_def
-    set p := (d i₀) ^ e₀ with hp_def
-
-    have hp_le : p ≤ n := pow_largestExp_le (hd i₀) hn
-    have hp_pos : 0 < p := Nat.one_le_pow _ _ (by have := hd i₀; omega : 0 < d i₀)
-
-    -- Apply induction to n - p
-    have hlt : n - p < n := Nat.sub_lt hn hp_pos
-    obtain ⟨a', ha'valid, ha'sum⟩ := ih (n - p) hlt
-
-    -- Case split on whether a' i₀ < p (safe to add p to same base)
-    by_cases ha'_small : a' i₀ < p
-    · -- a' i₀ < p = d^e₀, so adding p doesn't cause digit overflow
-      use fun j => if j = i₀ then a' i₀ + p else a' j
-      constructor
-      · intro j
-        by_cases hj : j = i₀
-        · subst hj
-          simp only [↓reduceIte]
-          rw [hp_def, he₀_def]
-          exact add_pow_valid (d i₀) (a' i₀) e₀ (hd i₀) ha'_small (ha'valid i₀)
-        · simp only [hj, ↓reduceIte]
-          exact ha'valid j
-      · -- Sum equals n
-        have hsum_eq : ∑ j, (if j = i₀ then a' i₀ + p else a' j) = (∑ j, a' j) + p := by
-          -- The LHS adds p to the i₀ term: ∑ (if j = i₀ then a' i₀ + p else a' j) = (∑ a' j) + p
-          calc ∑ j, (if j = i₀ then a' i₀ + p else a' j)
-              = ∑ j, (a' j + if j = i₀ then p else 0) := by
-                  apply Finset.sum_congr rfl; intro j _
-                  by_cases h : j = i₀ <;> simp [h]
-            _ = ∑ j, a' j + ∑ j, (if j = i₀ then p else 0) := Finset.sum_add_distrib
-            _ = ∑ j, a' j + p := by simp [Finset.sum_ite_eq']
-        rw [hsum_eq, ha'sum.symm, Nat.sub_add_cancel hp_le]
-
-    · -- a' i₀ ≥ p: need to check if we can still add p to a' i₀
-      push_neg at ha'_small
-
-      -- Key insight: Check if digit e₀ in a' i₀ is 0 or 1
-      -- If 0: can add p directly. If 1: use induction on a smaller value.
-      let digit_e₀ := (Nat.digits (d i₀) (a' i₀)).getD e₀ 0
-
-      by_cases hdigit : digit_e₀ = 0
-      · -- Case: digit at position e₀ is 0, so we can add p = (d i₀)^e₀
-        -- Even though a' i₀ ≥ p, the position e₀ is "free"
-        use fun j => if j = i₀ then a' i₀ + p else a' j
-        constructor
-        · intro j
-          by_cases hj : j = i₀
-          · subst hj
-            simp only [↓reduceIte]
-            -- Need to show usesOnlyZeroOne (d i₀) (a' i₀ + p)
-            -- Since digit e₀ is 0 in a' i₀, adding (d i₀)^e₀ sets that digit to 1
-            rw [hp_def, he₀_def]
-            exact add_pow_preserves_01_digits (hd i₀) (ha'valid i₀) hdigit
-          · simp only [hj, ↓reduceIte]
-            exact ha'valid j
-        · have hsum_eq : ∑ j, (if j = i₀ then a' i₀ + p else a' j) = (∑ j, a' j) + p := by
-            calc ∑ j, (if j = i₀ then a' i₀ + p else a' j)
-                = ∑ j, (a' j + if j = i₀ then p else 0) := by
-                    apply Finset.sum_congr rfl; intro j _
-                    by_cases h : j = i₀ <;> simp [h]
-              _ = ∑ j, a' j + ∑ j, (if j = i₀ then p else 0) := Finset.sum_add_distrib
-              _ = ∑ j, a' j + p := by simp [Finset.sum_ite_eq']
-          rw [hsum_eq, ha'sum.symm, Nat.sub_add_cancel hp_le]
-
-      · -- Case: digit at position e₀ is 1 (since usesOnlyZeroOne means ≤ 1)
-        -- This means (d i₀)^e₀ is already used in a' i₀
-        -- Strategy: find a' i₀ has (d i₀)^e₀ as a summand, so we can
-        -- apply induction on n - (d i₀)^e₀ directly (skipping the first base)
-
-        -- Since digit e₀ = 1, we have a' i₀ ≥ (d i₀)^e₀ = p and the
-        -- e₀-th digit is 1. So a' i₀ - (d i₀)^e₀ still uses only 0,1 digits.
-
-        -- Let a'' i₀ = a' i₀ - p, and a'' j = a' j for j ≠ i₀
-        -- Then ∑ a'' = n - p - p = n - 2p
-        -- And a'' uses only 0,1 digits
-
-        -- Now we need a representation of n = (n - 2p) + 2p
-        -- Apply induction on n - 2p to get b'', then add 2p
-
-        -- But 2p might not be a single power... unless we're clever
-
-        -- Actually, let's use a different approach:
-        -- If a' i₀ has a 1 at position e₀, then a' i₀ = (d i₀)^e₀ + r
-        -- where r < (d i₀)^e₀ and usesOnlyZeroOne r (positions < e₀)
-
-        -- We want n = (n - p) + p = ∑ a' + p
-        -- = (∑_{j≠i₀} a' j) + a' i₀ + p
-        -- = (∑_{j≠i₀} a' j) + ((d i₀)^e₀ + r) + (d i₀)^e₀
-        -- = (∑_{j≠i₀} a' j) + r + 2 * (d i₀)^e₀
-
-        -- The issue is 2 * (d i₀)^e₀ which can't be represented with 0,1 digits
-
-        -- So we need to "carry" or redistribute this to other bases
-        -- Since k ≥ 2, use another base
-
-        -- This is getting complex. Let's try a stronger induction:
-        -- Apply ih to n - 2p if 2p ≤ n, otherwise use a different decomposition
-
-        have h2p_le_n : 2 * p ≤ n := by
-          -- We have p ≤ a' i₀ and ∑ a' = n - p
-          -- So a' i₀ ≤ n - p, hence p ≤ n - p, hence 2p ≤ n
-          have : p ≤ n - p := by
-            calc p ≤ a' i₀ := ha'_small
-              _ ≤ ∑ j, a' j := Finset.single_le_sum (fun j _ => Nat.zero_le _)
-                  (Finset.mem_univ i₀)
-              _ = n - p := ha'sum.symm
-          omega
-
-        -- Apply induction to n - 2p
-        have hlt2 : n - 2 * p < n := by omega
-        obtain ⟨a'', ha''valid, ha''sum⟩ := ih (n - 2 * p) hlt2
-
-        -- Now we need to add 2p using the available bases
-        -- Since k ≥ 2, we can use base 1 to add power p, and base 0 to add power p
-        -- But we need a'' i ≤ some bound for each base
-
-        -- Actually, let's check if a'' i₀ < p. If so, we can add p to a'' i₀
-        -- Similarly for a'' i₁ where i₁ ≠ i₀
-
-        have hi₁_exists : ∃ i₁ : Fin k, i₁ ≠ i₀ := by
-          have hk' : 1 < k := by omega
-          have : 1 < Fintype.card (Fin k) := by simp; omega
-          exact Fintype.exists_ne_of_one_lt_card this i₀
-
-        obtain ⟨i₁, hi₁⟩ := hi₁_exists
-
-        -- Case split on whether we can add p to both a'' i₀ and a'' i₁
-        by_cases ha''_small_i₀ : a'' i₀ < p
-        · by_cases ha''_small_i₁ : a'' i₁ < p
-          · -- Both a'' i₀ < p and a'' i₁ < p
-            -- We can add p to each using add_pow_valid
-            use fun j => if j = i₀ then a'' i₀ + p else if j = i₁ then a'' i₁ + p else a'' j
-            constructor
-            · intro j
-              by_cases hj₀ : j = i₀
-              · subst hj₀
-                simp only [↓reduceIte]
-                rw [hp_def, he₀_def]
-                exact add_pow_valid (d i₀) (a'' i₀) e₀ (hd i₀) ha''_small_i₀ (ha''valid i₀)
-              · simp only [hj₀, ↓reduceIte]
-                by_cases hj₁ : j = i₁
-                · subst hj₁
-                  simp only [↓reduceIte]
-                  -- Adding p = (d i₀)^e₀ to a'' i₁ base d i₁
-                  -- This requires that (d i₁).digits (a'' i₁ + p) has only 0,1 digits
-                  -- This is not immediately clear since p is a power of d i₀, not d i₁
-                  -- For now, we use sorry as this requires more careful analysis
-                  sorry
-                · simp only [hj₁, ↓reduceIte]
-                  exact ha''valid j
-            · -- Sum equals n
-              have hne : i₁ ≠ i₀ := hi₁
-              calc n = (n - 2 * p) + 2 * p := (Nat.sub_add_cancel h2p_le_n).symm
-                _ = (∑ i, a'' i) + 2 * p := by rw [ha''sum]
-                _ = (∑ i, a'' i) + p + p := by ring
-                _ = (∑ i, a'' i) + (∑ i, if i = i₀ then p else 0) + (∑ i, if i = i₁ then p else 0) := by
-                    simp only [Finset.sum_ite_eq', Finset.mem_univ, ↓reduceIte]
-                _ = ∑ i, (a'' i + (if i = i₀ then p else 0) + (if i = i₁ then p else 0)) := by
-                    simp only [Finset.sum_add_distrib]
-                _ = ∑ i, (if i = i₀ then a'' i₀ + p else if i = i₁ then a'' i₁ + p else a'' i) := by
-                    apply Finset.sum_congr rfl
-                    intro j _
-                    by_cases hj₀ : j = i₀
-                    · simp [hj₀, hne.symm]
-                    · by_cases hj₁ : j = i₁
-                      · simp [hj₁, hne]
-                      · simp [hj₀, hj₁]
-          · -- a'' i₀ < p but a'' i₁ ≥ p
-            -- Need different strategy: check if digit at position e₀ in a'' i₀ is 0
-            sorry
-        · -- a'' i₀ ≥ p
-          -- Apply add_pow_preserves_01_digits if the digit at e₀ is 0
-          sorry
+    -- For now, we use sorry as the full Brown infrastructure requires
+    -- constructing a nondecreasing enumeration of all powers
+    sorry
