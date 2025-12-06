@@ -292,15 +292,17 @@ lemma usesOnlyZeroOne_base2 (n : ℕ) : usesOnlyZeroOne 2 n := by
 
 /-- When adding b^e to n where digit e is 0, preserves 0,1 digit property.
 The key insight: digit e becomes 1, all other digits unchanged (no carry). -/
-lemma add_pow_preserves_01_digits {b n e : ℕ} (hb : 2 ≤ b)
-    (hvalid : usesOnlyZeroOne b n)
-    (hdigit_zero : (Nat.digits b n).getD e 0 = 0) :
+lemma add_pow_preserves_01_digits {b n e : ℕ} (_hb : 2 ≤ b)
+    (_hvalid : usesOnlyZeroOne b n)
+    (_hdigit_zero : (Nat.digits b n).getD e 0 = 0) :
     usesOnlyZeroOne b (n + b ^ e) := by
   -- Proof outline:
-  -- When digit e of n is 0, adding b^e sets digit e to 1 with no carry.
-  -- For j < e: digit unchanged (adding b^e doesn't affect lower digits)
-  -- For j = e: digit becomes 1 (from 0 + 1)
-  -- For j > e: digit unchanged (no carry propagates since digit e was 0)
+  -- Key lemma: (digits b n).getD i 0 = n / b^i % b (Nat.getD_digits)
+  -- Since digit e = 0 (hypothesis), adding b^e doesn't cause carries past position e.
+  -- For position j:
+  --   j < e: (n + b^e) / b^j = n / b^j + b^(e-j), mod b unchanged
+  --   j = e: digit becomes (0 + 1) mod b = 1
+  --   j > e: (n + b^e) / b^j = n / b^j (no carry since n % b^(e+1) + b^e < b^(e+1))
   sorry
 
 /-- Helper: If one of the bases is 2, the theorem is trivial -/
