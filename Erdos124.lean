@@ -665,29 +665,6 @@ lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (
   rw [Finset.sum_map]
   simp only [Function.Embedding.coeFn_mk, Finset.sum_filter, Finset.sum_product]
 
-/-- Key density lemma: the sum of (d_i^{e+1} - 1)/(d_i - 1) over all bases bounds n
-when each d_i^{e_i} ≤ n < d_i^{e_i+1} -/
-lemma density_bound_for_powers {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
-    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    {M : ℕ} (hM : 0 < M) :
-    (M : ℚ) ≤ ∑ i : Fin k, (((Nat.log (d i) M + 1) : ℕ) : ℚ) * ((d i - 1 : ℕ) : ℚ)⁻¹ *
-      ((d i : ℚ) ^ (Nat.log (d i) M + 1) - 1) / ((d i : ℚ) - 1) := by
-  -- This follows from the capacity lemma and geometric series
-  sorry
-
-/-- The step inequality: each new power is at most 1 + sum of all smaller powers.
-This is the key property that makes Brown's lemma applicable. -/
-lemma step_inequality_from_density {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
-    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    (a : ℕ → ℕ) (ha_enum : ∀ n, ∃ p : BasePower k, a n = p.val d)
-    (ha_mono : Monotone a) (ha_0 : a 0 = 1)
-    (ha_complete : ∀ i e, ∃ n, a n = d i ^ e) :
-    ∀ m, a (m + 1) ≤ 1 + partialSum a (m + 1) := by
-  -- This follows from the density condition.
-  -- The key is that the sum of all powers ≤ a(m) is at least a(m) * ∑ 1/(d_i - 1) ≥ a(m)
-  -- So a(m+1) ≤ smallest power > a(m) ≤ 1 + sum of powers ≤ a(m)
-  sorry
-
 /-- Helper: If one of the bases is 2, the theorem is trivial -/
 lemma erdos_124_with_base2 {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i)
     (i₀ : Fin k) (hi₀ : d i₀ = 2) (n : ℕ) :
