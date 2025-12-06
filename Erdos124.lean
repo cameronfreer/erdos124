@@ -396,13 +396,58 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
       by_cases hm_zero : m = 0
       · simp only [hm_zero, zero_add]
         exact usesOnlyZeroOne_pow hb e
-      · -- m > 0 and m < b^e
-        -- Key insight: m < b^e implies digits of m have length ≤ e
-        -- So m + b^e = ofDigits b (digits(m) ++ zeros ++ [1])
-        -- All digits remain ≤ 1 since m uses only 0,1 digits
-        -- Uses: Nat.digits_append_zeroes_append_digits h1 (for b > 1)
-        -- digits b m ++ replicate k 0 ++ digits b 1 = digits b (m + b^(len+k))
-        sorry
+      · have h1 : 1 < b := by omega
+        -- Key: m < b^e implies length of digits ≤ e
+        have hlen : (Nat.digits b m).length ≤ e := by
+          by_contra hlen'
+          push_neg at hlen'
+          have hge := Nat.base_pow_length_digits_le b m h1 hm_zero
+          have hb_pos : 0 < b := by omega
+          have hlen_pos : 0 < (Nat.digits b m).length :=
+            List.length_pos_of_ne_nil (Nat.digits_ne_nil_iff_ne_zero.mpr hm_zero)
+          have hpow_le_m : b ^ ((Nat.digits b m).length - 1) ≤ m := by
+            have : b ^ (Nat.digits b m).length = b ^ ((Nat.digits b m).length - 1) * b := by
+              rw [← Nat.pow_succ, Nat.succ_eq_add_one, Nat.sub_add_cancel hlen_pos]
+            calc b ^ ((Nat.digits b m).length - 1)
+                = b ^ (Nat.digits b m).length / b := by
+                    rw [this, Nat.mul_div_cancel _ hb_pos]
+              _ ≤ b * m / b := Nat.div_le_div_right hge
+              _ = m := Nat.mul_div_cancel_left m hb_pos
+          have he_bound : e ≤ (Nat.digits b m).length - 1 := by omega
+          have : b ^ e ≤ m := calc
+            b ^ e ≤ b ^ ((Nat.digits b m).length - 1) := Nat.pow_le_pow_right (by omega) he_bound
+            _ ≤ m := hpow_le_m
+          omega
+
+        -- Use digits_append_zeroes_append_digits
+        set len := (Nat.digits b m).length
+        have hexp_eq : len + (e - len) = e := Nat.add_sub_cancel' hlen
+        have hdigits_eq : Nat.digits b (m + b ^ e) =
+            Nat.digits b m ++ List.replicate (e - len) 0 ++ Nat.digits b 1 := by
+          have hrhs := Nat.digits_append_zeroes_append_digits h1 (m := 1) (k := e - len) (n := m)
+            (by omega : 0 < 1)
+          simp only [mul_one] at hrhs
+          rw [hexp_eq] at hrhs
+          exact hrhs.symm
+
+        have hdigits_one : Nat.digits b 1 = [1] := by
+          rw [Nat.digits_def' h1 (by omega : 0 < 1)]
+          simp only [Nat.mod_eq_of_lt h1, Nat.div_eq_of_lt h1, Nat.digits_zero]
+
+        unfold usesOnlyZeroOne at hvalid ⊢
+        rw [hdigits_eq, hdigits_one]
+        intro x hx
+        simp only [List.toFinset_append, Finset.mem_union] at hx
+        rcases hx with (hx | hx) | hx
+        · exact hvalid hx
+        · by_cases hz : e - len = 0
+          · simp [hz] at hx
+          · rw [List.toFinset_replicate_of_ne_zero hz] at hx
+            simp only [Finset.mem_singleton] at hx
+            simp [hx]
+        · simp only [List.toFinset_cons, List.toFinset_nil, Finset.insert_empty,
+            Finset.mem_singleton] at hx
+          simp [hx]
 
     -- Find base 0 and its largest power
     have hk_pos : 0 < k := by omega
