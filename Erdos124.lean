@@ -525,7 +525,44 @@ lemma density_duplicate_when_max {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 �
   -- i₀ contributes 1/k, each other j ≠ i₀ contributes ≤ 1/(k+1) (since d j ≥ k + 2)
   -- Total ≤ 1/k + (k-1)/(k+1) = (k² + 1)/(k² + k) < 1 for k ≥ 2
   -- Proof: (k² + 1)/(k² + k) < 1 ⟺ k² + 1 < k² + k ⟺ 1 < k ✓
-  have htotal_lt : ∑ i : Fin k, (1 : ℚ) / (d i - 1) < 1 := by sorry
+  have htotal_lt : ∑ i : Fin k, (1 : ℚ) / (d i - 1) < 1 := by
+    -- Split sum: i₀ contributes 1/k, others each contribute ≤ 1/(k+1)
+    have hsplit := Finset.sum_eq_add_sum_diff_singleton (Finset.mem_univ i₀)
+           (f := fun i : Fin k => (1 : ℚ) / (d i - 1))
+    rw [hsplit]
+    -- Sum ≤ 1/k + (k-1)/(k+1) < 1
+    have hcard : (Finset.univ \ {i₀} : Finset (Fin k)).card = k - 1 := by
+      simp [Finset.card_sdiff, Finset.singleton_inter_of_mem (Finset.mem_univ i₀), Fintype.card_fin]
+    calc 1 / (d i₀ - 1) + ∑ j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (d j - 1)
+        = 1 / k + ∑ j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (d j - 1) := by rw [hi₀_contrib]
+      _ ≤ 1 / k + ∑ _j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (k + 1) := by
+          gcongr with j hj
+          simp only [Finset.mem_sdiff, Finset.mem_univ, Finset.mem_singleton, true_and] at hj
+          -- Need to show (k : ℚ) + 1 ≤ (d j : ℚ) - 1
+          have hge := hothers j hj
+          have h1 : (k + 2 : ℕ) ≤ d j := hge
+          have h2 : (k + 2 : ℚ) ≤ (d j : ℚ) := by exact_mod_cast h1
+          have hd_pos : 2 ≤ d j := hd j
+          have h3 : (d j : ℚ) - 1 ≥ 1 := by
+            have : (2 : ℕ) ≤ d j := hd_pos
+            have h4 : (2 : ℚ) ≤ (d j : ℚ) := by exact_mod_cast this
+            linarith
+          linarith
+      _ = 1 / k + (k - 1) / (k + 1) := by
+          rw [Finset.sum_const, hcard]
+          simp only [nsmul_eq_mul]
+          rw [Nat.cast_sub (by omega : 1 ≤ k)]
+          ring
+      _ < 1 := by
+          have hk_pos : (0 : ℚ) < k := by positivity
+          have hk1_pos : (0 : ℚ) < k + 1 := by positivity
+          have hkk1_pos : (0 : ℚ) < k * (k + 1) := by positivity
+          rw [div_add_div _ _ (ne_of_gt hk_pos) (ne_of_gt hk1_pos)]
+          rw [div_lt_one hkk1_pos]
+          have hk2 : (k : ℚ) ≥ 2 := by exact_mod_cast hk
+          ring_nf
+          -- Need: k² + 1 < k² + k, i.e., 1 < k
+          nlinarith
   linarith
 
 /-- Either the minimal base is ≤ k (can use ones), or there's a duplicate (can use other base) -/
