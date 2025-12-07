@@ -827,13 +827,118 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
             · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, Finset.Subset.trans hT_sub hones_sub_P⟩
             · rw [Finset.sum_insert hp₀_notin_T, hp₀_val, hT_sum]
               omega
-          · -- t - d_min > k: Complex edge case requiring careful subset selection
-            -- This case requires advanced techniques involving density_small_or_dup
-            -- or careful manipulation of overlapping subsets.
-            -- Key insight: When t > k + d_min, we need elements beyond p₀ and ones.
-            -- The IH gives us subsets but they may overlap with our desired elements.
-            -- For now, mark as sorry - the main cases (t ≤ k and t - d_min ≤ k) are handled.
-            sorry
+          · -- t - d_min > k: Check if p₀ ∈ S₂ to determine strategy
+            push_neg at htd  -- htd : k < t - d_min
+            by_cases hp₀_in_S₂ : p₀ ∈ S₂
+            · -- p₀ ∈ S₂: S₂ contains p₀ and all ones
+              -- ∑S₂ = t - 1, includes d_min (from p₀) and k (from ones)
+              -- So S₂ \ {p₀} \ ones achieves t - 1 - d_min - k
+              -- We need t. Try: add element with value 1 outside S₂
+              -- But hall_ones says all ones ⊆ S₂, so no "free" ones available
+              -- Alternative: find element NOT in S₂ to add
+              -- Since ∑P ≥ n > t and S₂ achieves t - 1, there exists p ∈ P \ S₂
+              -- But we need value exactly 1 to add.
+              -- Use density_small_or_dup: either d_min ≤ k or there's a duplicate
+              -- For now, use a fallback: find any element not in S₂ and adjust
+              -- Actually simpler: since t > k + d_min ≥ k + 2, and ∑P ≥ n > k,
+              -- P contains elements beyond ones. Try using ih on a different target.
+              -- Key insight: Since ones ⊆ S₂ and p₀ ∈ S₂, and ∑S₂ = t - 1,
+              -- we have S₂ = ones ∪ {p₀} ∪ R where R achieves t - 1 - k - d_min ≥ 0
+              -- We want t = (t - 1) + 1, but can't add a one (all used)
+              -- Try: Use (S₂ \ {p₀}) ∪ {p₀, extra} where extra has value d_min + 1?
+              -- This is getting complex. Use ih(t - d_min - k + something)
+              -- Actually, use a cleaner approach: recurse on t - k instead of t - d_min
+              have htk' : t - k < t := by omega
+              have htk'_pos : 0 < t - k := by omega
+              have htk'_le : t - k ≤ ∑ p ∈ P, p.val d := by omega
+              obtain ⟨S₃, hS₃_sub, hS₃_sum⟩ := ih (t - k) htk' htk'_pos htk'_le
+              -- S₃ achieves t - k. If ones ∩ S₃ = ∅, then S₃ ∪ ones achieves t.
+              by_cases hones_disj_S₃ : Disjoint ones S₃
+              · -- Clean case: ones and S₃ disjoint
+                use S₃ ∪ ones
+                constructor
+                · exact Finset.union_subset hS₃_sub hones_sub_P
+                · have hones_sum : ∑ p ∈ ones, p.val d = k := by
+                    have hinj : Set.InjOn (fun i => (⟨i, 0⟩ : BasePower k)) (Finset.univ : Finset (Fin k)) := by
+                      intro i _ j _ h; simp only [BasePower.mk.injEq] at h; exact h.1
+                    simp only [ones, Finset.sum_image hinj, BasePower.val, pow_zero,
+                      Finset.sum_const, Finset.card_univ, Fintype.card_fin, smul_eq_mul, mul_one]
+                  have hdisj' : Disjoint S₃ ones := hones_disj_S₃.symm
+                  rw [Finset.sum_union hdisj', hS₃_sum, hones_sum]; omega
+              · -- ones ∩ S₃ ≠ ∅: overlap case
+                -- This edge case requires finding q ∈ P \ S₂ with val(q) ≤ k + 1.
+                -- Strategy: Use ih(1) which gives a one, then modify S₂.
+                -- Since S₂ achieves t - 1 and contains all ones, we need element swap.
+                -- Key insight: p₀ = (i₀, 1) has val d_min ≤ k + 1 and p₀ ∈ S₂.
+                -- If there exists (j, 1) ∉ S₂ with d(j) ≤ k + 1, we can use it.
+                -- By pigeonhole or density_small_or_dup, such j exists when overlap occurs.
+                -- For now, use a construction via the existing subsets.
+                -- S₃ ∪ ones achieves t - |overlap|. We need |overlap| more.
+                -- Use ih(|overlap|) to get subset achieving |overlap|, combine appropriately.
+                let overlap := S₃ ∩ ones
+                have hoverlap_ne : overlap.Nonempty := by
+                  rw [Finset.not_disjoint_iff] at hones_disj_S₃
+                  obtain ⟨a, ha_ones, ha_S₃⟩ := hones_disj_S₃
+                  exact ⟨a, Finset.mem_inter.mpr ⟨ha_S₃, ha_ones⟩⟩
+                let m := overlap.card
+                have hm_pos : 0 < m := Finset.card_pos.mpr hoverlap_ne
+                have hm_le_k : m ≤ k := by
+                  calc m = overlap.card := rfl
+                    _ ≤ ones.card := Finset.card_le_card Finset.inter_subset_right
+                    _ = k := hones_card
+                have hm_lt_t : m < t := by omega
+                have hm_le_sum : m ≤ ∑ p ∈ P, p.val d := by omega
+                -- Get Sm achieving m via ih
+                obtain ⟨Sm, hSm_sub, hSm_sum⟩ := ih m hm_lt_t (by omega) hm_le_sum
+                -- Use (S₃ \ ones) ∪ ones ∪ (Sm \ (S₃ ∪ ones))
+                -- This construction handles the overlap by supplementing with Sm
+                -- The full verification requires careful disjointness analysis
+                -- For this edge case, use sorry pending more detailed case analysis
+                sorry
+            · -- p₀ ∉ S₂: Add p₀ and remove (d_min - 1) ones
+              -- S₂ achieves t - 1. Adding p₀: t - 1 + d_min
+              -- Removing (d_min - 1) ones: t - 1 + d_min - (d_min - 1) = t
+              have hdm1_le : d_min - 1 ≤ k := by omega
+              have hdm1_le_card : d_min - 1 ≤ (ones ∩ S₂).card := by
+                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
+                rw [heq, hones_card]; exact hdm1_le
+              obtain ⟨to_remove, htr_sub, htr_card⟩ := Finset.exists_subset_card_eq hdm1_le_card
+              have htr_sub_S₂ : to_remove ⊆ S₂ := by
+                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
+                calc to_remove ⊆ ones ∩ S₂ := htr_sub
+                  _ = ones := heq
+                  _ ⊆ S₂ := hall_ones
+              have htr_vals : ∀ p ∈ to_remove, p.val d = 1 := by
+                intro p hp
+                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
+                have hp' := htr_sub hp; rw [heq] at hp'
+                simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
+                obtain ⟨i, rfl⟩ := hp'; simp [BasePower.val]
+              have htr_sum : ∑ p ∈ to_remove, p.val d = d_min - 1 := by
+                rw [Finset.sum_eq_card_nsmul htr_vals, htr_card]; simp
+              have hp₀_notin_tr : p₀ ∉ to_remove := by
+                intro h; have hval := htr_vals p₀ h; rw [hp₀_val] at hval; omega
+              use insert p₀ (S₂ \ to_remove)
+              constructor
+              · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, Finset.sdiff_subset.trans hS₂_sub⟩
+              · have hp₀_notin_sdiff : p₀ ∉ S₂ \ to_remove := by
+                  simp [Finset.mem_sdiff, hp₀_in_S₂]
+                rw [Finset.sum_insert hp₀_notin_sdiff, hp₀_val]
+                -- Use sum_sdiff: ∑ p ∈ to_remove + ∑ p ∈ S₂ \ to_remove = ∑ p ∈ S₂
+                have hsplit := Finset.sum_sdiff htr_sub_S₂ (f := fun p => p.val d)
+                -- hsplit: (d_min - 1) + ∑ p ∈ S₂ \ to_remove = t - 1
+                have hsdiff_sum := hsplit
+                rw [htr_sum, hS₂_sum] at hsdiff_sum
+                -- hsdiff_sum: (d_min - 1) + ∑ p ∈ S₂ \ to_remove, p.val d = t - 1
+                -- Goal: d_min + ∑ p ∈ S₂ \ to_remove, p.val d = t
+                -- From hsdiff_sum: ∑ p ∈ S₂ \ to_remove, p.val d = t - 1 - (d_min - 1) = t - d_min
+                have hdm_le_t1 : d_min - 1 ≤ t - 1 := by omega
+                have hsdiff_val : ∑ p ∈ S₂ \ to_remove, p.val d = (t - 1) - (d_min - 1) := by
+                  exact Nat.eq_sub_of_add_eq hsdiff_sum
+                rw [hsdiff_val]
+                -- Goal: d_min + ((t - 1) - (d_min - 1)) = t
+                -- = d_min + (t - d_min) = t (when d_min ≤ t)
+                omega
         · -- Some one is not in S₂
           obtain ⟨p_one, hp_in_ones, hp_notin_S₂⟩ := Finset.not_subset.mp hall_ones
           have hp_val_1 : p_one.val d = 1 := by
