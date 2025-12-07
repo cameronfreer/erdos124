@@ -578,24 +578,112 @@ lemma density_small_or_dup {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
     obtain ⟨j, hj_ne, hj_eq⟩ := density_duplicate_when_max hd hk hsum i₀ heq hi₀_min
     exact ⟨j, hj_ne, by rw [heq]; exact hj_eq⟩
 
+/-- The sum of all powers ≤ T is at least T (from density condition).
+    This is the key insight: the density ∑ 1/(d_i - 1) ≥ 1 ensures powers "cover" all values. -/
+lemma sum_powers_at_least {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
+    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (T : ℕ) (hT : 0 < T) :
+    T ≤ ∑ p ∈ powersUpTo k d T, p.val d := by
+  -- Same argument as in hsum_ge proof in erdos_124
+  -- For each base i, sum of powers d_i^0 + ... + d_i^{e_i} ≥ T/(d_i - 1)
+  -- where e_i = largestExp(d_i, T). Summing: total ≥ T * ∑ 1/(d_i - 1) ≥ T
+  have hcap : (T : ℚ) ≤ ∑ i : Fin k, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) :=
+    capacity_lemma hd hsum hT
+  have hcap' : (T : ℚ) ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j := by
+    calc (T : ℚ) ≤ ∑ i, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) := hcap
+      _ = ∑ i, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j := by
+          apply Finset.sum_congr rfl; intro i _
+          exact geom_series_eq_sum (d i) (hd i) (largestExp (d i) T)
+  -- Each power d i ^ j with j ≤ largestExp is in powersUpTo k d T
+  have hP_contains : ∀ i : Fin k, ∀ j ∈ Finset.range (largestExp (d i) T + 1),
+      ⟨i, j⟩ ∈ powersUpTo k d T := by
+    intro i j hj
+    simp only [Finset.mem_range] at hj
+    have hj_le : j ≤ largestExp (d i) T := Nat.lt_succ_iff.mp hj
+    have hpow_le := pow_le_of_le_largestExp (hd i) hT hj_le
+    rw [mem_powersUpTo_iff]
+    constructor
+    · exact hpow_le
+    · have hd_ge_2 : d i ≥ 2 := hd i
+      calc j ≤ largestExp (d i) T := hj_le
+           _ ≤ d i ^ largestExp (d i) T := by
+               cases' Nat.eq_zero_or_pos (largestExp (d i) T) with hzero hpos
+               · simp [hzero]
+               · exact Nat.le_of_lt (Nat.lt_pow_self (by omega : 1 < d i))
+           _ ≤ T := pow_largestExp_le (hd i) hT
+  -- Sum over (i, j) pairs ≤ sum over powersUpTo
+  have hle_sum : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j : ℕ) ≤
+      ∑ p ∈ powersUpTo k d T, p.val d := by
+    let S := Finset.univ.sigma (fun i : Fin k => Finset.range (largestExp (d i) T + 1))
+    have hinj : ∀ x ∈ S, (⟨x.1, x.2⟩ : BasePower k) ∈ powersUpTo k d T := by
+      intro ⟨i, j⟩ hx
+      simp only [S, Finset.mem_sigma, Finset.mem_univ, true_and] at hx
+      exact hP_contains i j hx
+    have hsum_eq : ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j =
+        ∑ x ∈ S, d x.1 ^ x.2 := by rw [Finset.sum_sigma]
+    rw [hsum_eq]
+    let f : ((_ : Fin k) × ℕ) → BasePower k := fun x => ⟨x.1, x.2⟩
+    let S' := S.image f
+    have hf_inj : ∀ x ∈ S, ∀ y ∈ S, f x = f y → x = y := by
+      intro ⟨i1, j1⟩ _ ⟨i2, j2⟩ _ hxy
+      simp only [f, BasePower.mk.injEq] at hxy
+      simp [hxy.1, hxy.2]
+    have hS'_sub : S' ⊆ powersUpTo k d T := by
+      intro p hp
+      simp only [S', Finset.mem_image] at hp
+      obtain ⟨x, hx, rfl⟩ := hp
+      exact hinj x hx
+    have hsum_S_S' : ∑ x ∈ S, d x.1 ^ x.2 = ∑ p ∈ S', p.val d := by
+      rw [Finset.sum_image]
+      · simp only [f, BasePower.val]
+      · intro x hx y hy hxy; exact hf_inj x hx y hy hxy
+    rw [hsum_S_S']
+    exact Finset.sum_le_sum_of_subset hS'_sub
+  -- Combine
+  have hnat_eq : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j : ℕ) =
+      (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j : ℚ) := by
+    push_cast; rfl
+  have hT_le_nat : T ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j := by
+    rw [← hnat_eq] at hcap'; exact_mod_cast hcap'
+  exact Nat.le_trans hT_le_nat hle_sum
+
 /-- Key step condition for Brown's lemma: any power v ≤ 1 + sum of smaller powers.
     This follows from the density condition which ensures enough small powers exist. -/
-lemma power_step_condition {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
+lemma power_step_condition {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (_hk : 2 ≤ k)
     (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    {n : ℕ} (hn : 0 < n) (v : ℕ) (hv_pos : 0 < v) (hv_le : v ≤ n)
-    (hv_in : ∃ p ∈ powersUpTo k d n, p.val d = v) :
+    {n : ℕ} (_hn : 0 < n) (v : ℕ) (hv_pos : 0 < v) (hv_le : v ≤ n)
+    (_hv_in : ∃ p ∈ powersUpTo k d n, p.val d = v) :
     v ≤ 1 + ∑ p ∈ (powersUpTo k d n).filter (fun q => q.val d < v), p.val d := by
   -- Case v = 1: sum of powers < 1 is 0, so 1 ≤ 1 + 0 ✓
   by_cases hv1 : v = 1
   · subst hv1; simp
-  -- Case v > 1:
+  -- Case v > 1: use sum_powers_at_least with T = v - 1
   have hv_ge_2 : 2 ≤ v := by omega
-  -- The k ones (d_i^0 = 1 for each base) are in the filter since v > 1
-  -- Sum of ones = k, so RHS ≥ 1 + k
-  -- By density_key', min base ≤ k + 1, so any power v satisfies v ≤ 1 + (sum below v)
-  -- The full proof uses capacity_lemma logic applied locally
-  -- Key: density ∑ 1/(d_i - 1) ≥ 1 ensures enough small powers accumulate
-  sorry
+  have hvm1_pos : 0 < v - 1 := by omega
+  -- Sum of all powers ≤ (v-1) is ≥ (v-1)
+  have hkey := sum_powers_at_least hd hsum (v - 1) hvm1_pos
+  -- Powers in powersUpTo k d (v-1) are a subset of powers in powersUpTo k d n with value < v
+  have hsubset : powersUpTo k d (v - 1) ⊆ (powersUpTo k d n).filter (fun q => q.val d < v) := by
+    intro p hp
+    rw [mem_powersUpTo_iff] at hp
+    simp only [Finset.mem_filter, mem_powersUpTo_iff, BasePower.val]
+    constructor
+    · constructor
+      · have h1 : d p.idx ^ p.exp ≤ v - 1 := hp.1
+        have h2 : v - 1 < v := by omega
+        have h3 : v ≤ n := hv_le
+        omega
+      · have h1 : p.exp ≤ v - 1 := hp.2
+        have h2 : v - 1 < v := by omega
+        have h3 : v ≤ n := hv_le
+        omega
+    · calc d p.idx ^ p.exp ≤ v - 1 := hp.1
+           _ < v := by omega
+  -- So sum over filter ≥ sum over powersUpTo k d (v-1) ≥ v - 1
+  have hge : v - 1 ≤ ∑ p ∈ (powersUpTo k d n).filter (fun q => q.val d < v), p.val d := by
+    calc v - 1 ≤ ∑ p ∈ powersUpTo k d (v - 1), p.val d := hkey
+         _ ≤ ∑ p ∈ (powersUpTo k d n).filter (fun q => q.val d < v), p.val d :=
+             Finset.sum_le_sum_of_subset hsubset
+  omega
 
 
 /-- Subset sum for powersUpTo: given the capacity bound, find a subset summing to n.
@@ -648,16 +736,121 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
           simp [BasePower.val]
         rw [Finset.sum_eq_card_nsmul hT_vals, hT_card, smul_eq_mul, mul_one]
       exact ⟨T, Finset.Subset.trans hT_sub hones_sub, hT_sum⟩
-    -- Case t > k: need to use larger powers
+    -- Case t > k: use the minimum base and recurse
     push_neg at htk
-    -- Find a power p ∈ P with p.val d ≤ t
-    -- The minimum power is 1 (from the ones), and there are larger powers too
-    -- We'll use a greedy-like approach: find the largest power ≤ t, recurse
-    -- By density + capacity, this works
-    -- For now, we use the step condition to guarantee achievability
-    -- Key: any value v in P satisfies v ≤ 1 + (sum of smaller values in P)
-    -- This is Brown's "complete sequence" property
-    sorry
+    -- By density_key', there exists a base with d i₀ ≤ k + 1
+    obtain ⟨i₀, hi₀_le⟩ := density_key' hd hk hsum
+    let d_min := d i₀
+    have hd_min_le : d_min ≤ k + 1 := hi₀_le
+    have hd_min_ge : 2 ≤ d_min := hd i₀
+    -- Key: n > k (from _hnk), so n ≥ k + 1 ≥ d_min
+    have hn_ge : k + 1 ≤ n := _hnk
+    -- The power (i₀, 1) has value d_min and is in P
+    let p₀ : BasePower k := ⟨i₀, 1⟩
+    have hp₀_val : p₀.val d = d_min := by simp [BasePower.val, p₀, d_min, pow_one]
+    have hp₀_in_P : p₀ ∈ P := by
+      rw [hP, mem_powersUpTo_iff]
+      simp only [p₀, pow_one]
+      constructor
+      · calc d_min ≤ k + 1 := hd_min_le
+             _ ≤ n := hn_ge
+      · calc (1 : ℕ) ≤ k + 1 := by omega
+             _ ≤ n := hn_ge
+    -- d_min ≤ k + 1 ≤ t (since t > k means t ≥ k + 1)
+    have hd_le_t : d_min ≤ t := by omega
+    -- Subtract d_min and recurse
+    have ht' : t - d_min < t := by omega
+    by_cases ht'_zero : t - d_min = 0
+    · -- t = d_min exactly
+      use {p₀}
+      constructor
+      · exact Finset.singleton_subset_iff.mpr hp₀_in_P
+      · have heq : d_min = t := by
+          have h := Nat.sub_eq_zero_iff_le.mp ht'_zero
+          exact Nat.le_antisymm hd_le_t h
+        simp [hp₀_val, heq]
+    · -- t - d_min > 0, apply IH
+      have ht'_pos : 0 < t - d_min := by omega
+      have ht'_le : t - d_min ≤ ∑ p ∈ P, p.val d := by omega
+      obtain ⟨S₁, hS₁_sub, hS₁_sum⟩ := ih (t - d_min) ht' ht'_pos ht'_le
+      by_cases hp₀_in_S₁ : p₀ ∈ S₁
+      · -- p₀ already in S₁, need alternative approach
+        -- Strategy: S₁ contains (i₀, 1). We'll find a different element to add.
+        -- Key insight: S₁ achieves t - d_min using (i₀, 1).
+        -- We can try t - 1 instead (subtract a "one") and add an unused one.
+        -- Recurse on t - 1, then add an unused "one"
+        have ht1 : t - 1 < t := by omega
+        have ht1_pos : 0 < t - 1 := by omega  -- t > k ≥ 2, so t ≥ 3, t - 1 ≥ 2 > 0
+        have ht1_le : t - 1 ≤ ∑ p ∈ P, p.val d := by omega
+        obtain ⟨S₂, hS₂_sub, hS₂_sum⟩ := ih (t - 1) ht1 ht1_pos ht1_le
+        -- Find a "one" not in S₂
+        let ones := (Finset.univ : Finset (Fin k)).image (fun i => (⟨i, 0⟩ : BasePower k))
+        have hones_sub_P : ones ⊆ P := by
+          intro p hp
+          simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
+          obtain ⟨i, rfl⟩ := hp
+          rw [hP, mem_powersUpTo_iff]
+          simp only [pow_zero]
+          exact ⟨by omega, by omega⟩
+        have hones_card : ones.card = k := by
+          simp only [ones]
+          rw [Finset.card_image_of_injective]
+          · simp [Fintype.card_fin]
+          · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
+        -- S₂ can use at most all elements of P, but specifically consider ones in S₂
+        -- If S₂ ∩ ones has < k elements, we can find an unused one
+        by_cases hall_ones : ones ⊆ S₂
+        · -- All k ones are in S₂: use p₀ with appropriate ones
+          -- Key insight: We can construct {p₀} ∪ {t - d_min ones} if t - d_min ≤ k.
+          -- If t - d_min > k, we use a different approach: add p₀ to S₂ and remove (d_min - 1) ones.
+          by_cases htd : t - d_min ≤ k
+          · -- Can use {p₀} ∪ {exactly t - d_min ones}
+            have htd_le_ones : t - d_min ≤ ones.card := by rw [hones_card]; exact htd
+            obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq htd_le_ones
+            have hp₀_notin_T : p₀ ∉ T := by
+              intro h
+              have h' := hT_sub h
+              simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at h'
+              obtain ⟨i, hi⟩ := h'
+              simp only [BasePower.mk.injEq, p₀] at hi
+              omega -- p₀.exp = 1 ≠ 0
+            have hT_sum : ∑ p ∈ T, p.val d = t - d_min := by
+              have hT_vals : ∀ p ∈ T, p.val d = 1 := by
+                intro p hp
+                have hp' := hT_sub hp
+                simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
+                obtain ⟨i, rfl⟩ := hp'
+                simp [BasePower.val]
+              rw [Finset.sum_eq_card_nsmul hT_vals, hT_card, smul_eq_mul, mul_one]
+            use insert p₀ T
+            constructor
+            · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, Finset.Subset.trans hT_sub hones_sub_P⟩
+            · rw [Finset.sum_insert hp₀_notin_T, hp₀_val, hT_sum]
+              omega
+          · -- t - d_min > k: Complex edge case requiring careful subset selection
+            -- This case requires advanced techniques involving density_small_or_dup
+            -- or careful manipulation of overlapping subsets.
+            -- Key insight: When t > k + d_min, we need elements beyond p₀ and ones.
+            -- The IH gives us subsets but they may overlap with our desired elements.
+            -- For now, mark as sorry - the main cases (t ≤ k and t - d_min ≤ k) are handled.
+            sorry
+        · -- Some one is not in S₂
+          obtain ⟨p_one, hp_in_ones, hp_notin_S₂⟩ := Finset.not_subset.mp hall_ones
+          have hp_val_1 : p_one.val d = 1 := by
+            simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp_in_ones
+            obtain ⟨i, rfl⟩ := hp_in_ones
+            simp [BasePower.val]
+          use insert p_one S₂
+          constructor
+          · exact Finset.insert_subset_iff.mpr ⟨hones_sub_P hp_in_ones, hS₂_sub⟩
+          · rw [Finset.sum_insert hp_notin_S₂, hS₂_sum, hp_val_1]
+            omega
+      · -- p₀ not in S₁, simply add it
+        use insert p₀ S₁
+        constructor
+        · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, hS₁_sub⟩
+        · rw [Finset.sum_insert hp₀_in_S₁, hS₁_sum, hp₀_val]
+          omega
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :
