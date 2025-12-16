@@ -583,7 +583,7 @@ lemma density_small_or_dup {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
 lemma sum_powers_at_least {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
     (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (T : ℕ) (hT : 0 < T) :
     T ≤ ∑ p ∈ powersUpTo k d T, p.val d := by
-  -- Same argument as in hsum_ge proof in erdos_124
+  -- Capacity argument (geometric series + density bound).
   -- For each base i, sum of powers d_i^0 + ... + d_i^{e_i} ≥ T/(d_i - 1)
   -- where e_i = largestExp(d_i, T). Summing: total ≥ T * ∑ 1/(d_i - 1) ≥ T
   have hcap : (T : ℚ) ≤ ∑ i : Fin k, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) :=
@@ -685,17 +685,14 @@ lemma power_step_condition {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
              Finset.sum_le_sum_of_subset hsubset
   omega
 set_option maxHeartbeats 2000000 in
-/-- Subset sum for powersUpTo: given the capacity bound, find a subset summing to n.
+/-- Subset sum for `powersUpTo`: find a subset summing to `n`.
     This uses Brown's completeness machinery: the powers sorted by value form a "complete"
     sequence where each power ≤ 1 + sum of smaller powers (by density condition). -/
 lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
     (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1))
-    {n : ℕ} (hn : 0 < n) (_hnk : k < n)
-    (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
-    (hge : n ≤ ∑ p ∈ P, p.val d) :
-    ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
+    {n : ℕ} (hn : 0 < n) :
+    ∃ S : Finset (BasePower k), S ⊆ powersUpTo k d n ∧ ∑ p ∈ S, p.val d = n := by
   classical
-  subst hP
   -- Order base-powers primarily by value, then by (idx, exp) to break ties.
   let key : BasePower k → Lex (ℕ × Lex (Fin k × ℕ)) :=
     fun p => toLex (p.val d, toLex (p.idx, p.exp))
@@ -722,7 +719,6 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   letI : LinearOrder (BasePower k) := LinearOrder.liftWithOrd' key key_inj compare_f
 
   let P : Finset (BasePower k) := powersUpTo k d n
-  have hP : P = powersUpTo k d n := rfl
   let m : ℕ := P.card
   have hm : P.card = m := rfl
   let e : Fin m ≃o ↥P := Finset.orderIsoOfFin P hm
@@ -731,28 +727,20 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
     fun i =>
       if h : i < m then ((e ⟨i, h⟩).1).val d else 1
 
+  have hk_pos : 0 < k := by omega
+  let i0 : Fin k := ⟨0, hk_pos⟩
+  let p1 : BasePower k := ⟨i0, 0⟩
+  have hp1_mem : p1 ∈ P := by
+    rw [mem_powersUpTo_iff]
+    refine ⟨?_, Nat.zero_le _⟩
+    simpa [P, p1, BasePower.val, pow_zero] using (Nat.succ_le_of_lt hn)
+  have hp1_val : p1.val d = 1 := by simp [p1, BasePower.val]
+
   have hm_pos : 0 < m := by
-    have hk_pos : 0 < k := by omega
-    let i0 : Fin k := ⟨0, hk_pos⟩
-    let p1 : BasePower k := ⟨i0, 0⟩
-    have hp1_mem : p1 ∈ P := by
-      rw [hP, mem_powersUpTo_iff]
-      refine ⟨?_, ?_⟩
-      · simpa [p1, BasePower.val, pow_zero] using (Nat.succ_le_of_lt hn)
-      · exact Nat.zero_le n
     have : P.Nonempty := ⟨p1, hp1_mem⟩
     exact Nat.pos_of_ne_zero (Finset.card_ne_zero.mpr this)
 
   have ha0 : a 0 = 1 := by
-    have hk_pos : 0 < k := by omega
-    let i0 : Fin k := ⟨0, hk_pos⟩
-    let p1 : BasePower k := ⟨i0, 0⟩
-    have hp1_mem : p1 ∈ P := by
-      rw [hP, mem_powersUpTo_iff]
-      refine ⟨?_, ?_⟩
-      · simpa [p1, BasePower.val, pow_zero] using (Nat.succ_le_of_lt hn)
-      · exact Nat.zero_le n
-    have hp1_val : p1.val d = 1 := by simp [p1, BasePower.val]
     have hmin : (e ⟨0, hm_pos⟩).1 ≤ (⟨p1, hp1_mem⟩ : ↥P) := by
       haveI : NeZero m := ⟨Nat.ne_of_gt hm_pos⟩
       have h0 : (0 : Fin m) ≤ e.symm ⟨p1, hp1_mem⟩ := Fin.zero_le _
@@ -791,12 +779,12 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
         simpa [v] using this
       have hv_le : v ≤ n := by
         have hp_mem : p ∈ P := (e iFin).2
-        have hp_mem' : p ∈ powersUpTo k d n := by simpa [hP] using hp_mem
+        have hp_mem' : p ∈ powersUpTo k d n := by simpa [P] using hp_mem
         exact (mem_powersUpTo_iff p).1 hp_mem' |>.1
       have hv_in : ∃ q ∈ powersUpTo k d n, q.val d = v := by
         have hp_mem : p ∈ powersUpTo k d n := by
           have hp_memP : p ∈ P := (e iFin).2
-          simpa [hP] using hp_memP
+          simpa [P] using hp_memP
         exact ⟨p, hp_mem, rfl⟩
       have hv_step :
           v ≤ 1 + ∑ q ∈ (powersUpTo k d n).filter (fun q => q.val d < v), q.val d :=
@@ -941,8 +929,8 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
       rw [hsum_equiv]
       -- rewrite sum over subtype as finset sum
       simpa using (Finset.sum_coe_sort (s := P) (f := fun p : BasePower k => p.val d))
-    -- Use the given capacity bound.
-    have hn_le : n ≤ ∑ p ∈ P, p.val d := by simpa [P] using hge
+    have hn_le : n ≤ ∑ p ∈ P, p.val d := by
+      simpa [P] using sum_powers_at_least (k := k) (d := d) hd hsum n hn
     simpa [htot] using hn_le
 
   obtain ⟨s, hs_bound, hs_sum⟩ :=
@@ -1054,14 +1042,10 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
         exact usesOnlyZeroOne_zero (d i)
       · simp [hn]
 
-    -- For n > 0, we use the capacity lemma which shows there's enough room
-    have _hcap := capacity_lemma hd hsum hn
-
     -- Case 1: n ≤ k (can use just ones from k bases)
     by_cases hnk : n ≤ k
     · -- Use n ones from n different bases
       -- Since we have k bases and n ≤ k, we can pick n of them to contribute 1 each
-      have hfin : n ≤ Fintype.card (Fin k) := by simp [Fintype.card_fin]; exact hnk
       use fun i => if i.val < n then 1 else 0
       constructor
       · intro i
@@ -1103,92 +1087,9 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
     -- Step 1: Define the finite set of powers to consider
     let P := powersUpTo k d n
 
-    -- Step 2: The sum of all these powers is at least n (from density condition)
-    -- This follows from: for each base i, sum of d_i^0 + ... + d_i^{e_i} = (d_i^{e_i+1} - 1)/(d_i - 1)
-    -- where e_i = largestExp(d_i, n), and d_i^{e_i+1} > n, so sum > n/(d_i - 1)
-    -- Summing over all i: total > n * ∑ 1/(d_i - 1) ≥ n
-    have hsum_ge : n ≤ ∑ p ∈ P, p.val d := by
-      -- Use capacity_lemma and geometric series summation
-      -- First rewrite capacity using geometric series formula
-      have hcap' : (n : ℚ) ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j := by
-        calc (n : ℚ) ≤ ∑ i, ((d i) ^ (largestExp (d i) n + 1) - 1 : ℚ) / ((d i) - 1) := _hcap
-          _ = ∑ i, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j := by
-              apply Finset.sum_congr rfl
-              intro i _
-              exact geom_series_eq_sum (d i) (hd i) (largestExp (d i) n)
-      -- Each power d i ^ j with j ≤ largestExp is in P (since d i ^ j ≤ n)
-      -- So the sum over P contains all these powers
-      have hP_contains : ∀ i : Fin k, ∀ j ∈ Finset.range (largestExp (d i) n + 1),
-          ⟨i, j⟩ ∈ P := by
-        intro i j hj
-        simp only [Finset.mem_range] at hj
-        have hj_le : j ≤ largestExp (d i) n := Nat.lt_succ_iff.mp hj
-        have hpow_le := pow_le_of_le_largestExp (hd i) hn hj_le
-        rw [mem_powersUpTo_iff]
-        constructor
-        · exact hpow_le
-        · -- j ≤ largestExp ≤ d^{largestExp} ≤ n
-          have hd_ge_2 : d i ≥ 2 := hd i
-          calc j ≤ largestExp (d i) n := hj_le
-               _ ≤ d i ^ largestExp (d i) n := by
-                   cases' Nat.eq_zero_or_pos (largestExp (d i) n) with hzero hpos
-                   · simp [hzero]
-                   · exact Nat.le_of_lt (Nat.lt_pow_self (by omega : 1 < d i))
-               _ ≤ n := pow_largestExp_le (hd i) hn
-      -- Sum over all (i, j) with j ≤ largestExp ≤ sum over P
-      have hle_sum : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) ≤
-          ∑ p ∈ P, p.val d := by
-        -- Build the injection from (i, j) pairs to P
-        let S := Finset.univ.sigma (fun i : Fin k => Finset.range (largestExp (d i) n + 1))
-        have hinj : ∀ x ∈ S, (⟨x.1, x.2⟩ : BasePower k) ∈ P := by
-          intro ⟨i, j⟩ hx
-          simp only [S, Finset.mem_sigma, Finset.mem_univ, true_and] at hx
-          exact hP_contains i j hx
-        -- Rewrite as sum over S, then show S maps into P
-        have hsum_eq : ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j =
-            ∑ x ∈ S, d x.1 ^ x.2 := by
-          rw [Finset.sum_sigma]
-        rw [hsum_eq]
-        -- Define the image of S in P
-        let f : ((_ : Fin k) × ℕ) → BasePower k := fun x => ⟨x.1, x.2⟩
-        let S' := S.image f
-        -- f is injective on S
-        have hf_inj : ∀ x ∈ S, ∀ y ∈ S, f x = f y → x = y := by
-          intro ⟨i1, j1⟩ _ ⟨i2, j2⟩ _ hxy
-          simp only [f, BasePower.mk.injEq] at hxy
-          obtain ⟨hi, hj⟩ := hxy
-          simp [hi, hj]
-        -- S' ⊆ P
-        have hS'_sub : S' ⊆ P := by
-          intro p hp
-          simp only [S', Finset.mem_image] at hp
-          obtain ⟨x, hx, rfl⟩ := hp
-          exact hinj x hx
-        -- Sum over S equals sum over S' (by injectivity)
-        have hsum_S_S' : ∑ x ∈ S, d x.1 ^ x.2 = ∑ p ∈ S', p.val d := by
-          rw [Finset.sum_image]
-          · simp only [f, BasePower.val]
-          · exact hf_inj
-        rw [hsum_S_S']
-        -- S' ⊆ P gives the bound
-        exact Finset.sum_le_sum_of_subset hS'_sub
-      -- Combine: n ≤ rational sum = nat sum ≤ sum over P
-      have hnat_eq : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j : ℕ) =
-          (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), (d i : ℚ) ^ j : ℚ) := by
-        push_cast
-        rfl
-      have hn_le_nat : n ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) n + 1), d i ^ j := by
-        have := hcap'
-        rw [← hnat_eq] at this
-        exact_mod_cast this
-      exact Nat.le_trans hn_le_nat hle_sum
-
-    -- Step 3: Find a subset of P that sums to exactly n
-    -- This is the "complete sequence" property: if powers are listed in order
-    -- and each is at most 1 + sum of smaller ones, every sum up to total is achievable
+    -- Step 2: Find a subset of P that sums to exactly n (Brown completeness + density)
     have hsubset_sum : ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
-      -- Apply Brown-type subset sum argument
-      exact subset_sum_exists hd hk hsum hn hnk P rfl hsum_ge
+      simpa [P] using subset_sum_exists (k := k) (d := d) hd hk hsum hn
 
     -- Step 4: Group the chosen powers by base index
     obtain ⟨S, _hS_sub, hS_sum⟩ := hsubset_sum
