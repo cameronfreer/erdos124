@@ -4,7 +4,9 @@ open Lake DSL
 package «erdos124» where
   leanOptions := #[
     ⟨`pp.unicode.fun, true⟩,
-    ⟨`autoImplicit, false⟩
+    ⟨`autoImplicit, false⟩,
+    ⟨`linter.unusedVariables, true⟩,
+    ⟨`linter.unusedTactic, true⟩
   ]
 
 require mathlib from git

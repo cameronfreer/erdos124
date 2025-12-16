@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2025. All rights reserved.
 Released under MIT license as described in the file LICENSE.
-Authors: Claude Opus 4.5, GPT 5.1 Pro, GPT 5.2
+Authors: Claude Opus 4.5, GPT 5.1 Pro, GPT 5.2, Cameron Freer
 -/
 import Mathlib.Algebra.BigOperators.Group.Finset.Lemmas
 import Mathlib.Algebra.Order.BigOperators.Ring.Finset
@@ -38,9 +38,13 @@ By strong induction on n:
 
 **Brown's approach for n > k:**
 1. Define P = {(i, e) : d_i^e ≤ n} with value function (i,e) ↦ d_i^e
-2. The density condition ∑ 1/(d_i-1) ≥ 1 implies ∑_{p ∈ P} p.val ≥ n (`sum_powers_at_least`)
-3. Sort P by value; this sequence satisfies Brown's step condition: each power v ≤ 1 + (sum of smaller powers), due to the density condition (`power_step_condition`)
-4. Apply Brown's finite completeness lemma (`brown_achievable_range`) to find S ⊆ P with ∑ S = n
+2. The density condition ∑ 1/(d_i-1) ≥ 1 implies ∑_{p ∈ P} p.val ≥ n
+   (`sum_powers_at_least`)
+3. Sort P by value; this sequence satisfies Brown's step condition:
+   each power v ≤ 1 + (sum of smaller powers), due to the density condition
+   (`power_step_condition`)
+4. Apply Brown's finite completeness lemma (`brown_achievable_range`) to find
+   S ⊆ P with ∑ S = n
 5. Group chosen powers by base index to get the final a_i values
 
 ## References
@@ -106,8 +110,8 @@ def indicatorList (s : Finset ℕ) (n : ℕ) : List ℕ :=
   (List.range n).map (fun i => if i ∈ s then 1 else 0)
 
 /-- The indicator list has entries only 0 or 1 -/
-lemma indicatorList_mem_zero_one (s : Finset ℕ) (n : ℕ) (x : ℕ) (hx : x ∈ indicatorList s n) :
-    x = 0 ∨ x = 1 := by
+lemma indicatorList_mem_zero_one (s : Finset ℕ) (n : ℕ) (x : ℕ)
+    (hx : x ∈ indicatorList s n) : x = 0 ∨ x = 1 := by
   unfold indicatorList at hx
   simp only [List.mem_map, List.mem_range] at hx
   obtain ⟨i, _, hi⟩ := hx
@@ -163,12 +167,14 @@ lemma sum_pow_eq_ofDigits (b : ℕ) (s : Finset ℕ) (n : ℕ) (hn : ∀ e ∈ s
       rw [hsplit_sum, ih (s.filter (· < n)) hih, hlist_eq]
       simp only [hn_in, ↓reduceIte, Nat.ofDigits_singleton, mul_one, add_comm]
     · -- Case: n ∉ s
-      have hsub : ∀ e ∈ s, e < n := fun e he => Nat.lt_of_le_of_ne (Nat.lt_succ_iff.mp (hn e he)) (fun h => hn_in (h ▸ he))
+      have hsub : ∀ e ∈ s, e < n := fun e he =>
+        Nat.lt_of_le_of_ne (Nat.lt_succ_iff.mp (hn e he)) (fun h => hn_in (h ▸ he))
       rw [ih s hsub]
       simp only [hn_in, ↓reduceIte, Nat.ofDigits_singleton, mul_zero, add_zero]
 
 /-- Last element of a non-empty indicator list is the indicator of n-1 ∈ s -/
-lemma indicatorList_getLast {s : Finset ℕ} {n : ℕ} (hn : 0 < n) (hne : indicatorList s n ≠ []) :
+lemma indicatorList_getLast {s : Finset ℕ} {n : ℕ} (hn : 0 < n)
+    (hne : indicatorList s n ≠ []) :
     (indicatorList s n).getLast hne = if n - 1 ∈ s then 1 else 0 := by
   unfold indicatorList at hne ⊢
   rw [List.getLast_eq_getElem]
@@ -273,7 +279,8 @@ lemma capacity_lemma {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
   -- Each term equals the geometric series sum: 1 + d_i + d_i^2 + ... + d_i^{e_i}
   -- Since d_i^{e_i+1} > n, each term is > n/(d_i - 1)
   -- So the total is ≥ n * ∑ 1/(d_i - 1) ≥ n
-  have h1 : ∀ i, (n : ℚ) / ((d i : ℚ) - 1) ≤ ((d i) ^ (largestExp (d i) n + 1) - 1 : ℚ) / ((d i : ℚ) - 1) := by
+  have h1 : ∀ i, (n : ℚ) / ((d i : ℚ) - 1) ≤
+      ((d i) ^ (largestExp (d i) n + 1) - 1 : ℚ) / ((d i : ℚ) - 1) := by
     intro i
     have hdi : 2 ≤ d i := hd i
     have hd_pos : 0 < (d i : ℚ) - 1 := by
@@ -282,7 +289,8 @@ lemma capacity_lemma {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
     apply div_le_div_of_nonneg_right _ (le_of_lt hd_pos)
     have hlt := lt_pow_largestExp_succ hdi hn
     -- n < d^{e+1} in ℕ means n ≤ d^{e+1} - 1 in ℕ
-    have hpow_ge_one : 1 ≤ (d i) ^ (largestExp (d i) n + 1) := Nat.one_le_pow _ _ (by omega : 0 < d i)
+    have hpow_ge_one : 1 ≤ (d i) ^ (largestExp (d i) n + 1) :=
+      Nat.one_le_pow _ _ (by omega : 0 < d i)
     have hle : n ≤ (d i) ^ (largestExp (d i) n + 1) - 1 := by omega
     -- Cast to ℚ
     have hpow_pos : 0 < (d i) ^ (largestExp (d i) n + 1) := by positivity
@@ -324,11 +332,12 @@ then every natural number is representable as a finite subset sum of the sequenc
 def partialSum (a : ℕ → ℕ) (n : ℕ) : ℕ := ∑ i ∈ Finset.range n, a i
 
 /-- Brown's completeness lemma (finite version):
-The set of achievable subset sums from {a(0), ..., a(n-1)} is exactly {0, 1, ..., partialSum a n}
-when the step condition holds. -/
+The set of achievable subset sums from {a(0), ..., a(n-1)} is exactly
+{0, 1, ..., partialSum a n} when the step condition holds. -/
 lemma brown_achievable_range (a : ℕ → ℕ) (h0 : a 0 = 1)
     (hstep : ∀ m, a (m + 1) ≤ 1 + partialSum a (m + 1)) :
-    ∀ n, ∀ k ≤ partialSum a n, ∃ s : Finset ℕ, (∀ i ∈ s, i < n) ∧ ∑ i ∈ s, a i = k := by
+    ∀ n, ∀ k ≤ partialSum a n,
+      ∃ s : Finset ℕ, (∀ i ∈ s, i < n) ∧ ∑ i ∈ s, a i = k := by
   intro n
   induction n with
   | zero =>
@@ -412,23 +421,26 @@ def BasePower.val {k : ℕ} (d : Fin k → ℕ) (p : BasePower k) : ℕ :=
 
 /-- All powers up to value bound M: { (i, e) : d(i)^e ≤ M } -/
 def powersUpTo (k : ℕ) (d : Fin k → ℕ) (M : ℕ) : Finset (BasePower k) :=
-  (Finset.univ (α := Fin k) ×ˢ Finset.range (M + 1)).filter (fun p => d p.1 ^ p.2 ≤ M) |>.map
-    ⟨fun p => ⟨p.1, p.2⟩, fun _ _ h => by simp only [BasePower.mk.injEq] at h; ext <;> simp [h.1, h.2]⟩
+  (Finset.univ (α := Fin k) ×ˢ Finset.range (M + 1)).filter (fun p => d p.1 ^ p.2 ≤ M)
+    |>.map ⟨fun p => ⟨p.1, p.2⟩, fun _ _ h => by
+      simp only [BasePower.mk.injEq] at h; ext <;> simp [h.1, h.2]⟩
 
 /-- Geometric series formula in ℚ: (d^(e+1) - 1)/(d-1) = ∑_{j=0}^{e} d^j -/
 lemma geom_series_eq_sum (d : ℕ) (_hd : 2 ≤ d) (e : ℕ) :
-    ((d : ℚ) ^ (e + 1) - 1) / ((d : ℚ) - 1) = ∑ j ∈ Finset.range (e + 1), (d : ℚ) ^ j := by
+    ((d : ℚ) ^ (e + 1) - 1) / ((d : ℚ) - 1) =
+      ∑ j ∈ Finset.range (e + 1), (d : ℚ) ^ j := by
   have hd_ne_one : (d : ℚ) ≠ 1 := by
     have : (1 : ℕ) < d := by omega
     exact_mod_cast (ne_of_gt this)
-  have hd1 : (d : ℚ) - 1 ≠ 0 := by linarith [show (1 : ℚ) < d from by exact_mod_cast (by omega : 1 < d)]
+  have hd1 : (d : ℚ) - 1 ≠ 0 := by
+    linarith [show (1 : ℚ) < d from by exact_mod_cast (by omega : 1 < d)]
   have hgeom := geom_sum_eq hd_ne_one (e + 1)
   -- hgeom : ∑ i ∈ range (e+1), d^i = (d^(e+1) - 1) / (d - 1)
   rw [hgeom]
 
 /-- Each power d^j with j ≤ largestExp is ≤ n -/
-lemma pow_le_of_le_largestExp {d n j : ℕ} (hd : 2 ≤ d) (hn : 0 < n) (hj : j ≤ largestExp d n) :
-    d ^ j ≤ n := by
+lemma pow_le_of_le_largestExp {d n j : ℕ} (hd : 2 ≤ d) (hn : 0 < n)
+    (hj : j ≤ largestExp d n) : d ^ j ≤ n := by
   have hle := pow_largestExp_le hd hn
   calc d ^ j ≤ d ^ largestExp d n := Nat.pow_le_pow_right (by omega : 1 ≤ d) hj
        _ ≤ n := hle
@@ -451,7 +463,8 @@ lemma mem_powersUpTo_iff {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (p : BasePower 
 
 /-- The ones in powersUpTo: elements (i, 0) with value 1 -/
 def onesInP (k : ℕ) (_d : Fin k → ℕ) (_M : ℕ) : Finset (BasePower k) :=
-  (Finset.univ : Finset (Fin k)).map ⟨fun i => ⟨i, 0⟩, fun _ _ h => by simp [BasePower.ext_iff] at h; exact h⟩
+  (Finset.univ : Finset (Fin k)).map
+    ⟨fun i => ⟨i, 0⟩, fun _ _ h => by simp [BasePower.ext_iff] at h; exact h⟩
 
 lemma onesInP_subset {k : ℕ} {d : Fin k → ℕ} {M : ℕ} (hM : 0 < M) :
     onesInP k d M ⊆ powersUpTo k d M := by
@@ -507,9 +520,9 @@ lemma density_key' {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (hk : 
   linarith
 
 /-- If the minimal base is k+1, it cannot be unique (density forces a duplicate). -/
-lemma density_duplicate_when_max {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (hk : 2 ≤ k)
-    (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (i₀ : Fin k) (hi₀_eq : d i₀ = k + 1)
-    (hi₀_min : ∀ j, d i₀ ≤ d j) :
+lemma density_duplicate_when_max {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
+    (hk : 2 ≤ k) (hsum : 1 ≤ ∑ i : Fin k, (1 : ℚ) / (d i - 1)) (i₀ : Fin k)
+    (hi₀_eq : d i₀ = k + 1) (hi₀_min : ∀ j, d i₀ ≤ d j) :
     ∃ j : Fin k, j ≠ i₀ ∧ d j = k + 1 := by
   -- If d i₀ = k + 1 is the unique minimum, the density sum < 1, contradiction
   by_contra h
@@ -545,7 +558,8 @@ lemma density_duplicate_when_max {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 �
     rw [hsplit]
     -- Sum ≤ 1/k + (k-1)/(k+1) < 1
     have hcard : (Finset.univ \ {i₀} : Finset (Fin k)).card = k - 1 := by
-      simp [Finset.card_sdiff, Finset.singleton_inter_of_mem (Finset.mem_univ i₀), Fintype.card_fin]
+      simp [Finset.card_sdiff, Finset.singleton_inter_of_mem (Finset.mem_univ i₀),
+        Fintype.card_fin]
     calc 1 / (d i₀ - 1) + ∑ j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (d j - 1)
         = 1 / k + ∑ j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (d j - 1) := by rw [hi₀_contrib]
       _ ≤ 1 / k + ∑ _j ∈ Finset.univ \ {i₀}, (1 : ℚ) / (k + 1) := by
@@ -599,9 +613,11 @@ lemma sum_powers_at_least {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
   -- Capacity argument (geometric series + density bound).
   -- For each base i, sum of powers d_i^0 + ... + d_i^{e_i} ≥ T/(d_i - 1)
   -- where e_i = largestExp(d_i, T). Summing: total ≥ T * ∑ 1/(d_i - 1) ≥ T
-  have hcap : (T : ℚ) ≤ ∑ i : Fin k, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) :=
+  have hcap : (T : ℚ) ≤
+      ∑ i : Fin k, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) :=
     capacity_lemma hd hsum hT
-  have hcap' : (T : ℚ) ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j := by
+  have hcap' : (T : ℚ) ≤
+      ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j := by
     calc (T : ℚ) ≤ ∑ i, ((d i) ^ (largestExp (d i) T + 1) - 1 : ℚ) / ((d i) - 1) := hcap
       _ = ∑ i, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j := by
           apply Finset.sum_congr rfl; intro i _
@@ -655,7 +671,8 @@ lemma sum_powers_at_least {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
   have hnat_eq : (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j : ℕ) =
       (∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), (d i : ℚ) ^ j : ℚ) := by
     push_cast; rfl
-  have hT_le_nat : T ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j := by
+  have hT_le_nat :
+      T ≤ ∑ i : Fin k, ∑ j ∈ Finset.range (largestExp (d i) T + 1), d i ^ j := by
     rw [← hnat_eq] at hcap'; exact_mod_cast hcap'
   exact Nat.le_trans hT_le_nat hle_sum
 
@@ -773,7 +790,8 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
       · exact Nat.le_of_lt hlt
       · exact Nat.le_of_eq heq
     have hval_ge : 1 ≤ ((e ⟨0, hm_pos⟩).1).val d := by
-      have hd_pos : 0 < d ((e ⟨0, hm_pos⟩).1).idx := by have := hd ((e ⟨0, hm_pos⟩).1).idx; omega
+      have hd_pos : 0 < d ((e ⟨0, hm_pos⟩).1).idx := by
+        have := hd ((e ⟨0, hm_pos⟩).1).idx; omega
       have : 0 < ((e ⟨0, hm_pos⟩).1).val d := by
         simp [BasePower.val, Nat.pow_pos hd_pos]
       omega
@@ -847,7 +865,7 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
       have hidxSmall_sub : idxSmall ⊆ Finset.Iio iFin := by
         intro j hj
         have hjv : ((e j).1).val d < v := (Finset.mem_filter.mp hj).2
-        -- If value is smaller, then its key is smaller, hence index is smaller by order isomorphism.
+        -- If value is smaller, then key is smaller, hence index is smaller.
         have hlt_key : key (e j).1 < key p := by
           have : (ofLex (key (e j).1)).1 < (ofLex (key p)).1 := by
             simpa [key, v, p] using hjv
@@ -878,7 +896,8 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
           -- Reindex `range (t+1)` to `Iio iFin`.
           classical
           refine (Finset.sum_bij (s := Finset.range (t + 1)) (t := Finset.Iio iFin)
-            (i := fun j hj => (⟨j, Nat.lt_trans (Finset.mem_range.mp hj) ht⟩ : Fin m)) ?_ ?_ ?_ ?_).symm
+            (i := fun j hj => (⟨j, Nat.lt_trans (Finset.mem_range.mp hj) ht⟩ : Fin m))
+            ?_ ?_ ?_ ?_).symm
           · intro j hj
             have hj' : j < t + 1 := Finset.mem_range.mp hj
             have : (⟨j, Nat.lt_trans hj' ht⟩ : Fin m) < iFin := by
@@ -1071,8 +1090,10 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
         have hsum_eq : ∑ i : Fin k, (if i.val < n then 1 else 0) = n := by
           rw [Finset.sum_boole]
           -- Goal: (Finset.univ.filter fun i : Fin k => i.val < n).card = n
-          have hcard : (Finset.univ.filter fun i : Fin k => i.val < n).card = n := by
-            have h1 : ∀ i : Fin k, i ∈ Finset.univ.filter (fun i => i.val < n) ↔ i.val < n := by
+          have hcard :
+              (Finset.univ.filter fun i : Fin k => i.val < n).card = n := by
+            have h1 : ∀ i : Fin k,
+                i ∈ Finset.univ.filter (fun i => i.val < n) ↔ i.val < n := by
               intro i; simp
             -- The filter contains exactly {⟨0, _⟩, ⟨1, _⟩, ..., ⟨n-1, _⟩}
             conv_rhs => rw [← Finset.card_fin n]
@@ -1129,9 +1150,11 @@ theorem erdos_124 : ∀ k : ℕ, ∀ d : Fin k → ℕ,
             (t := Finset.univ) (by simp)]
         apply Finset.sum_congr rfl
         intro i _
-        -- Need: sum over {p ∈ S | p.idx = i} of d p.idx ^ p.exp = sum over image exp of d i ^ e
+        -- Need: sum over {p ∈ S | p.idx = i} of d p.idx ^ p.exp
+        --       = sum over image exp of d i ^ e
         -- First use that p.idx = i for all p in the filtered set
-        have hfilter_eq : ∀ p ∈ S.filter (fun p => p.idx = i), d p.idx ^ p.exp = d i ^ p.exp := by
+        have hfilter_eq :
+            ∀ p ∈ S.filter (fun p => p.idx = i), d p.idx ^ p.exp = d i ^ p.exp := by
           intro p hp
           simp only [Finset.mem_filter] at hp
           rw [hp.2]
