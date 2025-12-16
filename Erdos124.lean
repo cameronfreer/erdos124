@@ -3,7 +3,16 @@ Copyright (c) 2025. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: Claude Opus 4.5, GPT 5.1 Pro, GPT 5.2
 -/
-import Mathlib
+import Mathlib.Algebra.BigOperators.Group.Finset.Lemmas
+import Mathlib.Algebra.Order.BigOperators.Ring.Finset
+import Mathlib.Algebra.Order.Field.GeomSum
+import Mathlib.Data.Fin.Basic
+import Mathlib.Data.Finset.Sort
+import Mathlib.Data.List.GetD
+import Mathlib.Data.Nat.Digits.Lemmas
+import Mathlib.Data.Rat.Cast.Order
+import Mathlib.Order.Fin.Basic
+import Mathlib.Tactic
 
 /-!
 # Erdős Problem 124
