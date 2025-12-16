@@ -684,8 +684,7 @@ lemma power_step_condition {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i)
          _ ≤ ∑ p ∈ (powersUpTo k d n).filter (fun q => q.val d < v), p.val d :=
              Finset.sum_le_sum_of_subset hsubset
   omega
-
-
+set_option maxHeartbeats 2000000 in
 /-- Subset sum for powersUpTo: given the capacity bound, find a subset summing to n.
     This uses Brown's completeness machinery: the powers sorted by value form a "complete"
     sequence where each power ≤ 1 + sum of smaller powers (by density condition). -/
@@ -695,459 +694,291 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
     (P : Finset (BasePower k)) (hP : P = powersUpTo k d n)
     (hge : n ≤ ∑ p ∈ P, p.val d) :
     ∃ S : Finset (BasePower k), S ⊆ P ∧ ∑ p ∈ S, p.val d = n := by
-  -- Strategy: Use strong induction on n directly.
-  -- The key insight is that we can always find a suitable subset because:
-  -- 1. For small n ≤ k: use n ones (which are distinct base-power pairs)
-  -- 2. For larger n: the density condition ensures enough capacity
-  -- The step condition (power_step_condition) ensures Brown's completeness property holds.
   classical
-  -- We prove by strong induction that any target t with 0 < t ≤ sum(P) is achievable
-  suffices h : ∀ t, 0 < t → t ≤ ∑ p ∈ P, p.val d → ∃ S ⊆ P, ∑ p ∈ S, p.val d = t by
-    exact h n hn hge
-  intro t
-  induction t using Nat.strong_induction_on with
-  | _ t ih =>
-    intro ht_pos ht_le
-    -- Case t ≤ k: use t ones from P (each has value 1, they're distinct)
-    by_cases htk : t ≤ k
-    · -- P contains k ones: {(i, 0) : i ∈ Fin k}, each with value 1
-      let ones := (Finset.univ : Finset (Fin k)).image (fun i => (⟨i, 0⟩ : BasePower k))
-      have hones_sub : ones ⊆ P := by
-        intro p hp
-        simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
-        obtain ⟨i, rfl⟩ := hp
-        rw [hP, mem_powersUpTo_iff]
-        simp only [pow_zero]
-        exact ⟨by omega, by omega⟩
-      have hones_card : ones.card = k := by
-        simp only [ones]
-        rw [Finset.card_image_of_injective]
-        · simp [Fintype.card_fin]
-        · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
-      -- Take t elements from ones
-      have ht_le_card : t ≤ ones.card := by rw [hones_card]; exact htk
-      obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq ht_le_card
-      have hT_sum : ∑ p ∈ T, p.val d = t := by
-        have hT_vals : ∀ p ∈ T, p.val d = 1 := by
-          intro p hp
-          have hp' : p ∈ ones := hT_sub hp
-          simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-          obtain ⟨i, rfl⟩ := hp'
-          simp [BasePower.val]
-        rw [Finset.sum_eq_card_nsmul hT_vals, hT_card, smul_eq_mul, mul_one]
-      exact ⟨T, Finset.Subset.trans hT_sub hones_sub, hT_sum⟩
-    -- Case t > k: use the minimum base and recurse
-    push_neg at htk
-    -- By density_key', there exists a base with d i₀ ≤ k + 1
-    obtain ⟨i₀, hi₀_le⟩ := density_key' hd hk hsum
-    let d_min := d i₀
-    have hd_min_le : d_min ≤ k + 1 := hi₀_le
-    have hd_min_ge : 2 ≤ d_min := hd i₀
-    -- Key: n > k (from _hnk), so n ≥ k + 1 ≥ d_min
-    have hn_ge : k + 1 ≤ n := _hnk
-    -- The power (i₀, 1) has value d_min and is in P
-    let p₀ : BasePower k := ⟨i₀, 1⟩
-    have hp₀_val : p₀.val d = d_min := by simp [BasePower.val, p₀, d_min, pow_one]
-    have hp₀_in_P : p₀ ∈ P := by
+  subst hP
+  -- Order base-powers primarily by value, then by (idx, exp) to break ties.
+  let key : BasePower k → Lex (ℕ × Lex (Fin k × ℕ)) :=
+    fun p => toLex (p.val d, toLex (p.idx, p.exp))
+  have key_inj : Function.Injective key := by
+    intro p q h
+    have h' : (p.idx, p.exp) = (q.idx, q.exp) := by
+      have h₁ : (p.val d, toLex (p.idx, p.exp)) = (q.val d, toLex (q.idx, q.exp)) := by
+        simpa [key] using congrArg (fun x => (ofLex x)) h
+      have h₂ : toLex (p.idx, p.exp) = toLex (q.idx, q.exp) := by
+        simpa using congrArg Prod.snd h₁
+      simpa using congrArg (fun x => (ofLex x)) h₂
+    have h_idx : p.idx = q.idx := congrArg Prod.fst h'
+    have h_exp : p.exp = q.exp := congrArg Prod.snd h'
+    cases p with
+    | mk pidx pexp =>
+      cases q with
+      | mk qidx qexp =>
+        cases h_idx
+        cases h_exp
+        rfl
+  letI : Ord (BasePower k) := ⟨fun p q => compare (key p) (key q)⟩
+  let compare_f : ∀ a b : BasePower k, compare a b = compare (key a) (key b) := by
+    intro a b; rfl
+  letI : LinearOrder (BasePower k) := LinearOrder.liftWithOrd' key key_inj compare_f
+
+  let P : Finset (BasePower k) := powersUpTo k d n
+  have hP : P = powersUpTo k d n := rfl
+  let m : ℕ := P.card
+  have hm : P.card = m := rfl
+  let e : Fin m ≃o ↥P := Finset.orderIsoOfFin P hm
+
+  let a : ℕ → ℕ :=
+    fun i =>
+      if h : i < m then ((e ⟨i, h⟩).1).val d else 1
+
+  have hm_pos : 0 < m := by
+    have hk_pos : 0 < k := by omega
+    let i0 : Fin k := ⟨0, hk_pos⟩
+    let p1 : BasePower k := ⟨i0, 0⟩
+    have hp1_mem : p1 ∈ P := by
       rw [hP, mem_powersUpTo_iff]
-      simp only [p₀, pow_one]
-      constructor
-      · calc d_min ≤ k + 1 := hd_min_le
-             _ ≤ n := hn_ge
-      · calc (1 : ℕ) ≤ k + 1 := by omega
-             _ ≤ n := hn_ge
-    -- d_min ≤ k + 1 ≤ t (since t > k means t ≥ k + 1)
-    have hd_le_t : d_min ≤ t := by omega
-    -- Subtract d_min and recurse
-    have ht' : t - d_min < t := by omega
-    by_cases ht'_zero : t - d_min = 0
-    · -- t = d_min exactly
-      use {p₀}
-      constructor
-      · exact Finset.singleton_subset_iff.mpr hp₀_in_P
-      · have heq : d_min = t := by
-          have h := Nat.sub_eq_zero_iff_le.mp ht'_zero
-          exact Nat.le_antisymm hd_le_t h
-        simp [hp₀_val, heq]
-    · -- t - d_min > 0, apply IH
-      have ht'_pos : 0 < t - d_min := by omega
-      have ht'_le : t - d_min ≤ ∑ p ∈ P, p.val d := by omega
-      obtain ⟨S₁, hS₁_sub, hS₁_sum⟩ := ih (t - d_min) ht' ht'_pos ht'_le
-      by_cases hp₀_in_S₁ : p₀ ∈ S₁
-      · -- p₀ already in S₁, need alternative approach
-        -- Strategy: S₁ contains (i₀, 1). We'll find a different element to add.
-        -- Key insight: S₁ achieves t - d_min using (i₀, 1).
-        -- We can try t - 1 instead (subtract a "one") and add an unused one.
-        -- Recurse on t - 1, then add an unused "one"
-        have ht1 : t - 1 < t := by omega
-        have ht1_pos : 0 < t - 1 := by omega  -- t > k ≥ 2, so t ≥ 3, t - 1 ≥ 2 > 0
-        have ht1_le : t - 1 ≤ ∑ p ∈ P, p.val d := by omega
-        obtain ⟨S₂, hS₂_sub, hS₂_sum⟩ := ih (t - 1) ht1 ht1_pos ht1_le
-        -- Find a "one" not in S₂
-        let ones := (Finset.univ : Finset (Fin k)).image (fun i => (⟨i, 0⟩ : BasePower k))
-        have hones_sub_P : ones ⊆ P := by
-          intro p hp
-          simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp
-          obtain ⟨i, rfl⟩ := hp
-          rw [hP, mem_powersUpTo_iff]
-          simp only [pow_zero]
-          exact ⟨by omega, by omega⟩
-        have hones_card : ones.card = k := by
-          simp only [ones]
-          rw [Finset.card_image_of_injective]
-          · simp [Fintype.card_fin]
-          · intro i j h; simp only [BasePower.mk.injEq] at h; exact h.1
-        -- S₂ can use at most all elements of P, but specifically consider ones in S₂
-        -- If S₂ ∩ ones has < k elements, we can find an unused one
-        by_cases hall_ones : ones ⊆ S₂
-        · -- All k ones are in S₂: use p₀ with appropriate ones
-          -- Key insight: We can construct {p₀} ∪ {t - d_min ones} if t - d_min ≤ k.
-          -- If t - d_min > k, we use a different approach: add p₀ to S₂ and remove (d_min - 1) ones.
-          by_cases htd : t - d_min ≤ k
-          · -- Can use {p₀} ∪ {exactly t - d_min ones}
-            have htd_le_ones : t - d_min ≤ ones.card := by rw [hones_card]; exact htd
-            obtain ⟨T, hT_sub, hT_card⟩ := Finset.exists_subset_card_eq htd_le_ones
-            have hp₀_notin_T : p₀ ∉ T := by
-              intro h
-              have h' := hT_sub h
-              simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at h'
-              obtain ⟨i, hi⟩ := h'
-              simp only [BasePower.mk.injEq, p₀] at hi
-              omega -- p₀.exp = 1 ≠ 0
-            have hT_sum : ∑ p ∈ T, p.val d = t - d_min := by
-              have hT_vals : ∀ p ∈ T, p.val d = 1 := by
-                intro p hp
-                have hp' := hT_sub hp
-                simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-                obtain ⟨i, rfl⟩ := hp'
-                simp [BasePower.val]
-              rw [Finset.sum_eq_card_nsmul hT_vals, hT_card, smul_eq_mul, mul_one]
-            use insert p₀ T
-            constructor
-            · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, Finset.Subset.trans hT_sub hones_sub_P⟩
-            · rw [Finset.sum_insert hp₀_notin_T, hp₀_val, hT_sum]
-              omega
-          · -- t - d_min > k: Check if p₀ ∈ S₂ to determine strategy
-            push_neg at htd  -- htd : k < t - d_min
-            by_cases hp₀_in_S₂ : p₀ ∈ S₂
-            · -- p₀ ∈ S₂: S₂ contains p₀ and all ones
-              -- ∑S₂ = t - 1, includes d_min (from p₀) and k (from ones)
-              -- So S₂ \ {p₀} \ ones achieves t - 1 - d_min - k
-              -- We need t. Try: add element with value 1 outside S₂
-              -- But hall_ones says all ones ⊆ S₂, so no "free" ones available
-              -- Alternative: find element NOT in S₂ to add
-              -- Since ∑P ≥ n > t and S₂ achieves t - 1, there exists p ∈ P \ S₂
-              -- But we need value exactly 1 to add.
-              -- Use density_small_or_dup: either d_min ≤ k or there's a duplicate
-              -- For now, use a fallback: find any element not in S₂ and adjust
-              -- Actually simpler: since t > k + d_min ≥ k + 2, and ∑P ≥ n > k,
-              -- P contains elements beyond ones. Try using ih on a different target.
-              -- Key insight: Since ones ⊆ S₂ and p₀ ∈ S₂, and ∑S₂ = t - 1,
-              -- we have S₂ = ones ∪ {p₀} ∪ R where R achieves t - 1 - k - d_min ≥ 0
-              -- We want t = (t - 1) + 1, but can't add a one (all used)
-              -- Try: Use (S₂ \ {p₀}) ∪ {p₀, extra} where extra has value d_min + 1?
-              -- This is getting complex. Use ih(t - d_min - k + something)
-              -- Actually, use a cleaner approach: recurse on t - k instead of t - d_min
-              have htk' : t - k < t := by omega
-              have htk'_pos : 0 < t - k := by omega
-              have htk'_le : t - k ≤ ∑ p ∈ P, p.val d := by omega
-              obtain ⟨S₃, hS₃_sub, hS₃_sum⟩ := ih (t - k) htk' htk'_pos htk'_le
-              -- S₃ achieves t - k. If ones ∩ S₃ = ∅, then S₃ ∪ ones achieves t.
-              by_cases hones_disj_S₃ : Disjoint ones S₃
-              · -- Clean case: ones and S₃ disjoint
-                use S₃ ∪ ones
-                constructor
-                · exact Finset.union_subset hS₃_sub hones_sub_P
-                · have hones_sum : ∑ p ∈ ones, p.val d = k := by
-                    have hinj : Set.InjOn (fun i => (⟨i, 0⟩ : BasePower k)) (Finset.univ : Finset (Fin k)) := by
-                      intro i _ j _ h; simp only [BasePower.mk.injEq] at h; exact h.1
-                    simp only [ones, Finset.sum_image hinj, BasePower.val, pow_zero,
-                      Finset.sum_const, Finset.card_univ, Fintype.card_fin, smul_eq_mul, mul_one]
-                  have hdisj' : Disjoint S₃ ones := hones_disj_S₃.symm
-                  rw [Finset.sum_union hdisj', hS₃_sum, hones_sum]; omega
-              · -- ones ∩ S₃ ≠ ∅: overlap case
-                -- S₃ ∪ ones achieves t - |overlap|. We use S₂ with a swap.
-                -- S₂ achieves t - 1, contains all ones and p₀.
-                -- Strategy: Find q ∈ P \ S₂, remove (val(q) - 1) ones, add q.
-                -- Sum: (t - 1) - (val(q) - 1) + val(q) = t
+      refine ⟨?_, ?_⟩
+      · simpa [p1, BasePower.val, pow_zero] using (Nat.succ_le_of_lt hn)
+      · exact Nat.zero_le n
+    have : P.Nonempty := ⟨p1, hp1_mem⟩
+    exact Nat.pos_of_ne_zero (Finset.card_ne_zero.mpr this)
 
-                -- First, show P \ S₂ is non-empty (since ∑P > ∑S₂ = t - 1)
-                have hP_sum_gt : t - 1 < ∑ p ∈ P, p.val d := by omega
-                have hS₂_ne_P : S₂ ≠ P := by
-                  intro heq; rw [heq] at hS₂_sum; omega
-                have hP_sdiff_ne : (P \ S₂).Nonempty := by
-                  rw [Finset.sdiff_nonempty]
-                  intro h; exact hS₂_ne_P (Finset.Subset.antisymm hS₂_sub h)
+  have ha0 : a 0 = 1 := by
+    have hk_pos : 0 < k := by omega
+    let i0 : Fin k := ⟨0, hk_pos⟩
+    let p1 : BasePower k := ⟨i0, 0⟩
+    have hp1_mem : p1 ∈ P := by
+      rw [hP, mem_powersUpTo_iff]
+      refine ⟨?_, ?_⟩
+      · simpa [p1, BasePower.val, pow_zero] using (Nat.succ_le_of_lt hn)
+      · exact Nat.zero_le n
+    have hp1_val : p1.val d = 1 := by simp [p1, BasePower.val]
+    have hmin : (e ⟨0, hm_pos⟩).1 ≤ (⟨p1, hp1_mem⟩ : ↥P) := by
+      haveI : NeZero m := ⟨Nat.ne_of_gt hm_pos⟩
+      have h0 : (0 : Fin m) ≤ e.symm ⟨p1, hp1_mem⟩ := Fin.zero_le _
+      have h0' : (⟨0, hm_pos⟩ : Fin m) ≤ e.symm ⟨p1, hp1_mem⟩ := by
+        simp [h0]
+      simpa using e.monotone h0'
+    have hkey_le : key ((e ⟨0, hm_pos⟩).1) ≤ key p1 := by
+      -- order on BasePower is the lifted key order
+      have : (e ⟨0, hm_pos⟩ : ↥P) ≤ ⟨p1, hp1_mem⟩ := hmin
+      have : (e ⟨0, hm_pos⟩).1 ≤ p1 := (Subtype.mk_le_mk).1 this
+      -- `≤` is definitional as `key _ ≤ key _` for our lifted order.
+      change key ((e ⟨0, hm_pos⟩).1) ≤ key p1
+      simpa using this
+    have hval_le : ((e ⟨0, hm_pos⟩).1).val d ≤ 1 := by
+      have := (Prod.Lex.le_iff).1 hkey_le
+      rcases this with hlt | ⟨heq, _⟩
+      · exact Nat.le_of_lt hlt
+      · exact Nat.le_of_eq heq
+    have hval_ge : 1 ≤ ((e ⟨0, hm_pos⟩).1).val d := by
+      have hd_pos : 0 < d ((e ⟨0, hm_pos⟩).1).idx := by have := hd ((e ⟨0, hm_pos⟩).1).idx; omega
+      have : 0 < ((e ⟨0, hm_pos⟩).1).val d := by
+        simp [BasePower.val, Nat.pow_pos hd_pos]
+      omega
+    have hval_eq : ((e ⟨0, hm_pos⟩).1).val d = 1 := Nat.le_antisymm hval_le hval_ge
+    simp [a, hm_pos, hval_eq]
 
-                -- Get some element q ∈ P \ S₂
-                obtain ⟨q, hq_mem⟩ := hP_sdiff_ne
-                have hq_in_P : q ∈ P := Finset.mem_sdiff.mp hq_mem |>.1
-                have hq_not_S₂ : q ∉ S₂ := Finset.mem_sdiff.mp hq_mem |>.2
+  have hstep : ∀ t, a (t + 1) ≤ 1 + partialSum a (t + 1) := by
+    intro t
+    by_cases ht : t + 1 < m
+    · let iFin : Fin m := ⟨t + 1, ht⟩
+      let p : BasePower k := (e iFin).1
+      let v : ℕ := p.val d
+      have hv_pos : 0 < v := by
+        have hd_pos : 0 < d p.idx := by have := hd p.idx; omega
+        have : 0 < p.val d := by simp [BasePower.val, p, Nat.pow_pos hd_pos]
+        simpa [v] using this
+      have hv_le : v ≤ n := by
+        have hp_mem : p ∈ P := (e iFin).2
+        have hp_mem' : p ∈ powersUpTo k d n := by simpa [hP] using hp_mem
+        exact (mem_powersUpTo_iff p).1 hp_mem' |>.1
+      have hv_in : ∃ q ∈ powersUpTo k d n, q.val d = v := by
+        have hp_mem : p ∈ powersUpTo k d n := by
+          have hp_memP : p ∈ P := (e iFin).2
+          simpa [hP] using hp_memP
+        exact ⟨p, hp_mem, rfl⟩
+      have hv_step :
+          v ≤ 1 + ∑ q ∈ (powersUpTo k d n).filter (fun q => q.val d < v), q.val d :=
+        power_step_condition hd hk hsum hn v hv_pos hv_le hv_in
 
-                -- q is not in ones (since ones ⊆ S₂ but q ∉ S₂)
-                have hq_not_ones : q ∉ ones := fun h => hq_not_S₂ (hall_ones h)
+      -- Relate the sum of powers < v to the partial sum of the first (t+1) terms of `a`.
+      let idxSmall : Finset (Fin m) :=
+        (Finset.univ : Finset (Fin m)).filter (fun j => ((e j).1).val d < v)
 
-                -- q has positive exponent (not a "one")
-                have hq_exp_pos : 0 < q.exp := by
-                  by_contra h; push_neg at h
-                  have hq_exp_zero : q.exp = 0 := Nat.eq_zero_of_le_zero h
-                  have hq_in_ones : q ∈ ones := by
-                    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and]
-                    exact ⟨q.idx, by ext <;> simp [hq_exp_zero]⟩
-                  exact hq_not_ones hq_in_ones
+      have hsum_small :
+          (∑ q ∈ P.filter (fun q => q.val d < v), q.val d) =
+            ∑ j ∈ idxSmall, ((e j).1).val d := by
+        classical
+        -- Use the order isomorphism to reindex the filtered sum.
+        refine Finset.sum_bij (s := P.filter (fun q => q.val d < v)) (t := idxSmall)
+          (i := fun q hq => e.symm ⟨q, (Finset.mem_filter.mp hq).1⟩) ?_ ?_ ?_ ?_
+        · intro q hq
+          have hqP : q ∈ P := (Finset.mem_filter.mp hq).1
+          have hqv : q.val d < v := (Finset.mem_filter.mp hq).2
+          have heq : (e (e.symm ⟨q, hqP⟩) : ↥P) = ⟨q, hqP⟩ := e.apply_symm_apply _
+          have : ((e (e.symm ⟨q, hqP⟩)).1).val d < v := by
+            simpa [heq] using hqv
+          exact Finset.mem_filter.mpr ⟨Finset.mem_univ _, this⟩
+        · intro q1 hq1 q2 hq2 hEq
+          have hEq' : (⟨q1, (Finset.mem_filter.mp hq1).1⟩ : ↥P) =
+              (⟨q2, (Finset.mem_filter.mp hq2).1⟩ : ↥P) := by
+            have := congrArg e hEq
+            simpa using this
+          have : q1 = q2 := by
+            simpa using congrArg Subtype.val hEq'
+          exact this
+        · intro j hj
+          have hj' : ((e j).1).val d < v := by
+            simpa [idxSmall] using (Finset.mem_filter.mp hj).2
+          refine ⟨(e j).1, ?_, ?_⟩
+          · have : (e j).1 ∈ P := (e j).2
+            have : (e j).1 ∈ P.filter (fun q => q.val d < v) := by
+              exact Finset.mem_filter.mpr ⟨this, hj'⟩
+            exact this
+          · ext
+            simp
+        · intro q hq
+          have hqP : q ∈ P := (Finset.mem_filter.mp hq).1
+          have heq : (e (e.symm ⟨q, hqP⟩) : ↥P) = ⟨q, hqP⟩ := e.apply_symm_apply _
+          simp [heq]
 
-                -- q.val d ≥ 2 (since d(q.idx) ≥ 2 and exp ≥ 1)
-                have hq_val_ge : 2 ≤ q.val d := by
-                  have hd_pos : 0 < d q.idx := by have := hd q.idx; omega
-                  calc 2 ≤ d q.idx := hd q.idx
-                       _ = d q.idx ^ 1 := by ring
-                       _ ≤ d q.idx ^ q.exp := Nat.pow_le_pow_right hd_pos hq_exp_pos
+      have hidxSmall_sub : idxSmall ⊆ Finset.Iio iFin := by
+        intro j hj
+        have hjv : ((e j).1).val d < v := (Finset.mem_filter.mp hj).2
+        -- If value is smaller, then its key is smaller, hence index is smaller by order isomorphism.
+        have hlt_key : key (e j).1 < key p := by
+          have : (ofLex (key (e j).1)).1 < (ofLex (key p)).1 := by
+            simpa [key, v, p] using hjv
+          -- unfold lexicographic comparison
+          have : key (e j).1 < key p := by
+            exact (Prod.Lex.lt_iff).2 (Or.inl this)
+          exact this
+        have hlt : (e j).1 < p := by
+          change key (e j).1 < key p
+          exact hlt_key
+        have hlt' : (e j) < e iFin := by
+          -- coe to subtype
+          exact (Subtype.mk_lt_mk).2 hlt
+        have : j < iFin := by
+          simpa using (e.lt_iff_lt).1 hlt'
+        simpa [Finset.mem_Iio] using this
 
-                -- Use the bound on q from powersUpTo
-                have hq_val_le_n : q.val d ≤ n := by
-                  rw [hP] at hq_in_P
-                  exact ((mem_powersUpTo_iff q).mp hq_in_P).1
+      have hsum_small_le :
+          (∑ q ∈ P.filter (fun q => q.val d < v), q.val d) ≤ partialSum a (t + 1) := by
+        -- sum over P.filter = sum over idxSmall ≤ sum over Iio iFin = partialSum
+        have h1 :
+            (∑ q ∈ P.filter (fun q => q.val d < v), q.val d) ≤
+              ∑ j ∈ Finset.Iio iFin, ((e j).1).val d := by
+          rw [hsum_small]
+          exact Finset.sum_le_sum_of_subset hidxSmall_sub
+        have h2 : ∑ j ∈ Finset.Iio iFin, ((e j).1).val d = partialSum a (t + 1) := by
+          unfold partialSum
+          -- Reindex `range (t+1)` to `Iio iFin`.
+          classical
+          refine (Finset.sum_bij (s := Finset.range (t + 1)) (t := Finset.Iio iFin)
+            (i := fun j hj => (⟨j, Nat.lt_trans (Finset.mem_range.mp hj) ht⟩ : Fin m)) ?_ ?_ ?_ ?_).symm
+          · intro j hj
+            have hj' : j < t + 1 := Finset.mem_range.mp hj
+            have : (⟨j, Nat.lt_trans hj' ht⟩ : Fin m) < iFin := by
+              simpa [iFin] using hj'
+            simpa [Finset.mem_Iio] using this
+          · intro j1 hj1 j2 hj2 hEq
+            simp only [Fin.ext_iff] at hEq
+            exact hEq
+          · intro j hj
+            have hj' : (j : ℕ) < t + 1 := by
+              have : (j : Fin m) < iFin := by simpa [Finset.mem_Iio] using hj
+              simpa [iFin] using this
+            refine ⟨j.1, ?_, ?_⟩
+            · exact Finset.mem_range.mpr hj'
+            · ext; simp
+          · intro j hj
+            have hj' : j < t + 1 := Finset.mem_range.mp hj
+            have hjm : j < m := Nat.lt_trans hj' ht
+            simp [a, hjm]
+        exact le_trans h1 (le_of_eq h2)
 
-                -- Key: we need q.val d - 1 ≤ k to remove that many ones
-                by_cases hq_small : q.val d ≤ k + 1
-                · -- q has value ≤ k + 1: can swap with (q.val d - 1) ones
-                  have hq_sub_le : q.val d - 1 ≤ k := by omega
-                  have hq_sub_le_card : q.val d - 1 ≤ (ones ∩ S₂).card := by
-                    have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                    rw [heq, hones_card]; exact hq_sub_le
-                  obtain ⟨to_rem, htr_sub, htr_card⟩ := Finset.exists_subset_card_eq hq_sub_le_card
-                  have htr_sub_S₂ : to_rem ⊆ S₂ := by
-                    have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                    calc to_rem ⊆ ones ∩ S₂ := htr_sub
-                      _ = ones := heq
-                      _ ⊆ S₂ := hall_ones
-                  have htr_vals : ∀ p ∈ to_rem, p.val d = 1 := by
-                    intro p hp
-                    have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                    have hp' := htr_sub hp; rw [heq] at hp'
-                    simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-                    obtain ⟨i, rfl⟩ := hp'; simp [BasePower.val]
-                  have htr_sum : ∑ p ∈ to_rem, p.val d = q.val d - 1 := by
-                    rw [Finset.sum_eq_card_nsmul htr_vals, htr_card]; simp
-                  have hq_notin_tr : q ∉ to_rem := by
-                    intro h; have hval := htr_vals q h
-                    have : q.val d ≥ 2 := hq_val_ge
-                    omega
-                  use insert q (S₂ \ to_rem)
-                  constructor
-                  · exact Finset.insert_subset_iff.mpr ⟨hq_in_P, Finset.sdiff_subset.trans hS₂_sub⟩
-                  · have hq_notin_sdiff : q ∉ S₂ \ to_rem := by
-                      simp [Finset.mem_sdiff, hq_not_S₂]
-                    rw [Finset.sum_insert hq_notin_sdiff]
-                    have hsplit := Finset.sum_sdiff htr_sub_S₂ (f := fun p => p.val d)
-                    rw [htr_sum, hS₂_sum] at hsplit
-                    have hsdiff_val : ∑ p ∈ S₂ \ to_rem, p.val d = (t - 1) - (q.val d - 1) := by
-                      exact Nat.eq_sub_of_add_eq hsplit
-                    rw [hsdiff_val]
-                    have hqv_pos : q.val d ≥ 1 := by omega
-                    omega
-                · -- q has value > k + 1: need a different element
-                  push_neg at hq_small
-                  -- By density, there exists some base j with d j ≤ k + 1
-                  -- and (j, 1) is in P. If (j, 1) ∉ S₂, use it.
-                  -- p₀ = (i₀, 1) has val d_min ≤ k + 1 but is in S₂.
-                  -- Use density_small_or_dup to find alternative.
+      have hv_step' :
+          v ≤ 1 + partialSum a (t + 1) := by
+        -- combine hv_step and hsum_small_le (after rewriting P = powersUpTo)
+        have hsum_rewrite :
+            (∑ q ∈ (powersUpTo k d n).filter (fun q => q.val d < v), q.val d) =
+              ∑ q ∈ P.filter (fun q => q.val d < v), q.val d := by
+          rfl
+        -- now
+        have : v ≤ 1 + ∑ q ∈ P.filter (fun q => q.val d < v), q.val d := by
+          simpa [hsum_rewrite] using hv_step
+        exact le_trans this (Nat.add_le_add_left hsum_small_le 1)
 
-                  -- Get the minimum base value
-                  have hfin : (Finset.univ : Finset (Fin k)).Nonempty := by
-                    use ⟨0, by omega⟩; simp
-                  obtain ⟨i_min, _, hi_min_le⟩ := Finset.exists_min_image (Finset.univ : Finset (Fin k)) d hfin
-                  have hd_min_i : d i_min ≤ k + 1 := by
-                    calc d i_min ≤ d i₀ := hi_min_le i₀ (Finset.mem_univ _)
-                         _ ≤ k + 1 := hi₀_le
-                  have hi_min_le' : ∀ j, d i_min ≤ d j := fun j => hi_min_le j (Finset.mem_univ _)
+      -- Finish: a (t+1) = v
+      have hat : a (t + 1) = v := by
+        have : t + 1 < m := ht
+        simp [a, this, v, p, iFin]
+      simpa [hat] using hv_step'
+    · -- Beyond the length, a(t+1) = 1
+      have : ¬ (t + 1 < m) := ht
+      simp [a, this]
 
-                  -- Apply density_small_or_dup
-                  have hdsd := density_small_or_dup hd hk hsum i_min hd_min_i hi_min_le'
+  have hn_le_partial : n ≤ partialSum a m := by
+    -- partialSum a m is the total sum of values of all elements of P.
+    have htot : partialSum a m = ∑ p ∈ P, p.val d := by
+      unfold partialSum
+      -- ∑ i ∈ range m, a i = ∑ i : Fin m, a i.1
+      have hsum_range : (∑ i ∈ Finset.range m, a i) = ∑ i : Fin m, a i := by
+        simpa using (Finset.sum_range (f := a) (n := m))
+      rw [hsum_range]
+      -- unfold a on Fin m indices
+      have ha_fin : (∑ i : Fin m, a i) = ∑ i : Fin m, ((e i).1).val d := by
+        apply Finset.sum_congr rfl
+        intro i _
+        simp [a, i.isLt]
+      rw [ha_fin]
+      -- reindex via the equivalence e : Fin m ≃ ↥P
+      have hsum_equiv :
+          (∑ i : Fin m, ((e i).1).val d) = ∑ p : ↥P, (p : BasePower k).val d := by
+        simpa using (Equiv.sum_comp (e.toEquiv) (fun p : ↥P => (p : BasePower k).val d))
+      rw [hsum_equiv]
+      -- rewrite sum over subtype as finset sum
+      simpa using (Finset.sum_coe_sort (s := P) (f := fun p : BasePower k => p.val d))
+    -- Use the given capacity bound.
+    have hn_le : n ≤ ∑ p ∈ P, p.val d := by simpa [P] using hge
+    simpa [htot] using hn_le
 
-                  cases hdsd with
-                  | inl h_small =>
-                    -- d i_min ≤ k: Use (i_min, 1) which has value ≤ k
-                    let p_min : BasePower k := ⟨i_min, 1⟩
-                    have hp_min_val : p_min.val d = d i_min := by simp [BasePower.val, p_min, pow_one]
-                    have hp_min_in_P : p_min ∈ P := by
-                      rw [hP, mem_powersUpTo_iff]
-                      constructor
-                      · show d i_min ^ 1 ≤ n
-                        simp only [pow_one]
-                        calc d i_min ≤ k := h_small
-                             _ ≤ k + 1 := by omega
-                             _ ≤ n := hn_ge
-                      · show (1 : ℕ) ≤ n
-                        omega
-                    by_cases hp_min_in_S₂ : p_min ∈ S₂
-                    · -- p_min ∈ S₂: This edge case requires more sophisticated handling.
-                      -- The mathematical situation is: we have S₂ achieving t-1 with all ones
-                      -- and p_min (with d i_min ≤ k) already inside. Since P\S₂ contains only
-                      -- large elements (val ≥ k+2), we need a different construction.
-                      -- This is a degenerate case that may be vacuously true in practice.
-                      sorry
-                    · -- p_min ∉ S₂: use p_min for the swap
-                      have hp_min_val_le : p_min.val d - 1 ≤ k := by
-                        rw [hp_min_val]; omega
-                      have hp_min_sub_le_card : p_min.val d - 1 ≤ (ones ∩ S₂).card := by
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        rw [heq, hones_card]; exact hp_min_val_le
-                      obtain ⟨to_rem', htr'_sub, htr'_card⟩ := Finset.exists_subset_card_eq hp_min_sub_le_card
-                      have htr'_sub_S₂ : to_rem' ⊆ S₂ := by
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        calc to_rem' ⊆ ones ∩ S₂ := htr'_sub
-                          _ = ones := heq
-                          _ ⊆ S₂ := hall_ones
-                      have htr'_vals : ∀ p ∈ to_rem', p.val d = 1 := by
-                        intro p hp
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        have hp' := htr'_sub hp; rw [heq] at hp'
-                        simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-                        obtain ⟨i, rfl⟩ := hp'; simp [BasePower.val]
-                      have htr'_sum : ∑ p ∈ to_rem', p.val d = p_min.val d - 1 := by
-                        rw [Finset.sum_eq_card_nsmul htr'_vals, htr'_card]; simp
-                      have hp_min_notin_tr : p_min ∉ to_rem' := by
-                        intro h; have hval := htr'_vals p_min h
-                        have : p_min.val d = d i_min := hp_min_val
-                        have : d i_min ≥ 2 := hd i_min
-                        omega
-                      use insert p_min (S₂ \ to_rem')
-                      constructor
-                      · exact Finset.insert_subset_iff.mpr ⟨hp_min_in_P, Finset.sdiff_subset.trans hS₂_sub⟩
-                      · have hp_min_notin_sdiff : p_min ∉ S₂ \ to_rem' := by
-                          simp [Finset.mem_sdiff, hp_min_in_S₂]
-                        rw [Finset.sum_insert hp_min_notin_sdiff]
-                        have hsplit := Finset.sum_sdiff htr'_sub_S₂ (f := fun p => p.val d)
-                        rw [htr'_sum, hS₂_sum] at hsplit
-                        have hsdiff_val' : ∑ p ∈ S₂ \ to_rem', p.val d = (t - 1) - (p_min.val d - 1) := by
-                          exact Nat.eq_sub_of_add_eq hsplit
-                        rw [hsdiff_val', hp_min_val]
-                        have hdimin_ge : d i_min ≥ 2 := hd i_min
-                        omega
-                  | inr h_dup =>
-                    -- ∃ j ≠ i_min with d j = d i_min: duplicate base value
-                    obtain ⟨j, hj_ne, hj_eq⟩ := h_dup
-                    let p_j : BasePower k := ⟨j, 1⟩
-                    have hp_j_val : p_j.val d = d j := by simp [BasePower.val, p_j, pow_one]
-                    have hp_j_val' : p_j.val d = d i_min := by rw [hp_j_val, hj_eq]
-                    have hp_j_in_P : p_j ∈ P := by
-                      rw [hP, mem_powersUpTo_iff]
-                      constructor
-                      · show d j ^ 1 ≤ n
-                        simp only [pow_one]
-                        calc d j = d i_min := hj_eq
-                             _ ≤ k + 1 := hd_min_i
-                             _ ≤ n := hn_ge
-                      · show (1 : ℕ) ≤ n
-                        omega
-                    by_cases hp_j_in_S₂ : p_j ∈ S₂
-                    · -- Both p_min and p_j (duplicates) are in S₂
-                      -- This edge case requires sophisticated reasoning about the duplicate
-                      -- structure. We have two elements p_min and p_j with d p_min.idx = d p_j.idx
-                      -- (duplicate bases) both in S₂. Combined with the overlap of ones and S₃,
-                      -- this should either provide a contradiction or an alternative construction.
-                      -- Deferred for detailed analysis.
-                      sorry
-                    · -- p_j ∉ S₂: use p_j for the swap
-                      have hp_j_val_le : p_j.val d - 1 ≤ k := by
-                        rw [hp_j_val']; omega
-                      have hp_j_sub_le_card : p_j.val d - 1 ≤ (ones ∩ S₂).card := by
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        rw [heq, hones_card]; exact hp_j_val_le
-                      obtain ⟨to_rem'', htr''_sub, htr''_card⟩ := Finset.exists_subset_card_eq hp_j_sub_le_card
-                      have htr''_sub_S₂ : to_rem'' ⊆ S₂ := by
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        calc to_rem'' ⊆ ones ∩ S₂ := htr''_sub
-                          _ = ones := heq
-                          _ ⊆ S₂ := hall_ones
-                      have htr''_vals : ∀ p ∈ to_rem'', p.val d = 1 := by
-                        intro p hp
-                        have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                        have hp' := htr''_sub hp; rw [heq] at hp'
-                        simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-                        obtain ⟨i, rfl⟩ := hp'; simp [BasePower.val]
-                      have htr''_sum : ∑ p ∈ to_rem'', p.val d = p_j.val d - 1 := by
-                        rw [Finset.sum_eq_card_nsmul htr''_vals, htr''_card]; simp
-                      have hp_j_notin_tr : p_j ∉ to_rem'' := by
-                        intro h; have hval := htr''_vals p_j h
-                        have : p_j.val d = d j := hp_j_val
-                        have : d j ≥ 2 := hd j
-                        omega
-                      use insert p_j (S₂ \ to_rem'')
-                      constructor
-                      · exact Finset.insert_subset_iff.mpr ⟨hp_j_in_P, Finset.sdiff_subset.trans hS₂_sub⟩
-                      · have hp_j_notin_sdiff : p_j ∉ S₂ \ to_rem'' := by
-                          simp [Finset.mem_sdiff, hp_j_in_S₂]
-                        rw [Finset.sum_insert hp_j_notin_sdiff]
-                        have hsplit := Finset.sum_sdiff htr''_sub_S₂ (f := fun p => p.val d)
-                        rw [htr''_sum, hS₂_sum] at hsplit
-                        have hsdiff_val'' : ∑ p ∈ S₂ \ to_rem'', p.val d = (t - 1) - (p_j.val d - 1) := by
-                          exact Nat.eq_sub_of_add_eq hsplit
-                        rw [hsdiff_val'']
-                        have hdj_ge : d j ≥ 2 := hd j
-                        omega
-            · -- p₀ ∉ S₂: Add p₀ and remove (d_min - 1) ones
-              -- S₂ achieves t - 1. Adding p₀: t - 1 + d_min
-              -- Removing (d_min - 1) ones: t - 1 + d_min - (d_min - 1) = t
-              have hdm1_le : d_min - 1 ≤ k := by omega
-              have hdm1_le_card : d_min - 1 ≤ (ones ∩ S₂).card := by
-                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                rw [heq, hones_card]; exact hdm1_le
-              obtain ⟨to_remove, htr_sub, htr_card⟩ := Finset.exists_subset_card_eq hdm1_le_card
-              have htr_sub_S₂ : to_remove ⊆ S₂ := by
-                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                calc to_remove ⊆ ones ∩ S₂ := htr_sub
-                  _ = ones := heq
-                  _ ⊆ S₂ := hall_ones
-              have htr_vals : ∀ p ∈ to_remove, p.val d = 1 := by
-                intro p hp
-                have heq : ones ∩ S₂ = ones := Finset.inter_eq_left.mpr hall_ones
-                have hp' := htr_sub hp; rw [heq] at hp'
-                simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp'
-                obtain ⟨i, rfl⟩ := hp'; simp [BasePower.val]
-              have htr_sum : ∑ p ∈ to_remove, p.val d = d_min - 1 := by
-                rw [Finset.sum_eq_card_nsmul htr_vals, htr_card]; simp
-              have hp₀_notin_tr : p₀ ∉ to_remove := by
-                intro h; have hval := htr_vals p₀ h; rw [hp₀_val] at hval; omega
-              use insert p₀ (S₂ \ to_remove)
-              constructor
-              · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, Finset.sdiff_subset.trans hS₂_sub⟩
-              · have hp₀_notin_sdiff : p₀ ∉ S₂ \ to_remove := by
-                  simp [Finset.mem_sdiff, hp₀_in_S₂]
-                rw [Finset.sum_insert hp₀_notin_sdiff, hp₀_val]
-                -- Use sum_sdiff: ∑ p ∈ to_remove + ∑ p ∈ S₂ \ to_remove = ∑ p ∈ S₂
-                have hsplit := Finset.sum_sdiff htr_sub_S₂ (f := fun p => p.val d)
-                -- hsplit: (d_min - 1) + ∑ p ∈ S₂ \ to_remove = t - 1
-                have hsdiff_sum := hsplit
-                rw [htr_sum, hS₂_sum] at hsdiff_sum
-                -- hsdiff_sum: (d_min - 1) + ∑ p ∈ S₂ \ to_remove, p.val d = t - 1
-                -- Goal: d_min + ∑ p ∈ S₂ \ to_remove, p.val d = t
-                -- From hsdiff_sum: ∑ p ∈ S₂ \ to_remove, p.val d = t - 1 - (d_min - 1) = t - d_min
-                have hdm_le_t1 : d_min - 1 ≤ t - 1 := by omega
-                have hsdiff_val : ∑ p ∈ S₂ \ to_remove, p.val d = (t - 1) - (d_min - 1) := by
-                  exact Nat.eq_sub_of_add_eq hsdiff_sum
-                rw [hsdiff_val]
-                -- Goal: d_min + ((t - 1) - (d_min - 1)) = t
-                -- = d_min + (t - d_min) = t (when d_min ≤ t)
-                omega
-        · -- Some one is not in S₂
-          obtain ⟨p_one, hp_in_ones, hp_notin_S₂⟩ := Finset.not_subset.mp hall_ones
-          have hp_val_1 : p_one.val d = 1 := by
-            simp only [ones, Finset.mem_image, Finset.mem_univ, true_and] at hp_in_ones
-            obtain ⟨i, rfl⟩ := hp_in_ones
-            simp [BasePower.val]
-          use insert p_one S₂
-          constructor
-          · exact Finset.insert_subset_iff.mpr ⟨hones_sub_P hp_in_ones, hS₂_sub⟩
-          · rw [Finset.sum_insert hp_notin_S₂, hS₂_sum, hp_val_1]
-            omega
-      · -- p₀ not in S₁, simply add it
-        use insert p₀ S₁
-        constructor
-        · exact Finset.insert_subset_iff.mpr ⟨hp₀_in_P, hS₁_sub⟩
-        · rw [Finset.sum_insert hp₀_in_S₁, hS₁_sum, hp₀_val]
-          omega
+  obtain ⟨s, hs_bound, hs_sum⟩ :=
+    brown_achievable_range a ha0 hstep m n hn_le_partial
+
+  let g : ℕ → BasePower k :=
+    fun i => if h : i < m then (e ⟨i, h⟩).1 else (e ⟨0, hm_pos⟩).1
+  let S : Finset (BasePower k) := s.image g
+  refine ⟨S, ?_, ?_⟩
+  · intro p hp
+    rcases Finset.mem_image.mp hp with ⟨i, hi, rfl⟩
+    have hi' : i < m := hs_bound i hi
+    simp [g, hi', P]
+  · -- sum over S matches the Brown-selected indices
+    have hg_inj : Set.InjOn g (↑s : Set ℕ) := by
+      intro i hi j hj hij
+      have hi' : i < m := hs_bound i (by simpa using hi)
+      have hj' : j < m := hs_bound j (by simpa using hj)
+      have : (e ⟨i, hi'⟩ : ↥P) = e ⟨j, hj'⟩ := by
+        apply Subtype.ext
+        simpa [g, hi', hj'] using hij
+      have : (⟨i, hi'⟩ : Fin m) = ⟨j, hj'⟩ := e.injective this
+      simpa using congrArg Fin.val this
+    -- Evaluate the sum using injectivity
+    have hsum_image :
+        (∑ p ∈ S, p.val d) = ∑ i ∈ s, (g i).val d := by
+      simpa [S] using
+        (Finset.sum_image (f := fun p : BasePower k => p.val d) (s := s) (g := g) hg_inj)
+    rw [hsum_image]
+    -- g i is exactly a i on indices from s
+    have : (∑ i ∈ s, (g i).val d) = ∑ i ∈ s, a i := by
+      apply Finset.sum_congr rfl
+      intro i hi
+      have hi' : i < m := hs_bound i hi
+      simp [g, a, hi', P]
+    rw [this, hs_sum]
 
 /-- The sum of all powers up to M -/
 lemma sum_powersUpTo_eq {k : ℕ} {d : Fin k → ℕ} (_hd : ∀ i, 2 ≤ d i) (M : ℕ) :

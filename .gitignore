@@ -3,3 +3,4 @@ lake-packages/
 build/
 .cache/
 .claude/
+AGENTS.md
