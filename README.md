@@ -33,7 +33,7 @@ Numbers using only digits 0 and 1 in base b are exactly sums of distinct powers 
 a uses only {0,1} digits in base b  ↔  a = ∑_{e ∈ S} b^e for some finite S ⊆ ℕ
 ```
 
-This equivalence is captured by `usesOnlyZeroOne_sum_distinct_powers`.
+This direction (sum of distinct powers → uses only 0,1 digits) is shown by `usesOnlyZeroOne_sum_distinct_powers`.
 
 ### Proof Structure
 
@@ -45,21 +45,20 @@ If any base d(i) = 2, the problem is trivial: every natural number has a binary 
 
 When all bases are at least 3, the density condition forces k ≥ 2 bases.
 
-The proof proceeds by **strong induction on n**, constructing a finite set S of base-power pairs `(i, e)` where each `d(i)^e ≤ n`, such that `∑_{(i,e) ∈ S} d(i)^e = n` and no two elements share the same base index with different exponents that would overlap.
-
-**Base cases:**
+**Cases by n:**
 - **n = 0:** Use a(i) = 0 for all i.
-- **n ≤ k:** Use n copies of d(i)^0 = 1 from n different bases (the "ones").
+- **n ≤ k:** Use n ones from n different bases (each d(i)^0 = 1).
+- **n > k:** Apply Brown's completeness machinery via `subset_sum_exists`.
 
-**Inductive case (n > k):**
-1. Find the minimum base d(i₀) using `density_key'`: the density condition ensures d(i₀) ≤ k+1.
-2. Apply the induction hypothesis to n - d(i₀) to get a subset S'.
-3. If (i₀, 1) ∉ S', add it and we're done.
-4. If (i₀, 1) ∈ S', use `density_small_or_dup` which gives two sub-cases:
-   - Either d(i₀) ≤ k, allowing alternative constructions using "ones"
-   - Or there exists j ≠ i₀ with d(j) = d(i₀), providing an alternative base
+**Brown's approach for n > k:**
 
-The proof handles several edge cases when recursive constructions conflict with the current base's powers.
+The key insight is that powers d(i)^e ≤ n, when sorted by value, form a "complete sequence" satisfying Brown's step condition: each power v ≤ 1 + (sum of all smaller powers). This follows from the density condition ensuring enough small powers exist (`power_step_condition`).
+
+1. Collect all powers P = {(i, e) : d(i)^e ≤ n} across all bases
+2. The density condition ensures ∑_{p ∈ P} p.val ≥ n (`sum_powers_at_least`)
+3. Sort P by value and apply Brown's finite completeness lemma (`brown_achievable_range`)
+4. This yields a subset S ⊆ P with ∑_{p ∈ S} p.val = n
+5. Group chosen powers by base index to get the final a(i) values
 
 ### Key Technical Lemmas
 
@@ -67,7 +66,7 @@ The proof handles several edge cases when recursive constructions conflict with 
 - **`capacity_lemma`:** The density condition implies sufficient total capacity of powers
 - **`density_key'`:** From the density condition, the minimum base satisfies d_min ≤ k+1
 - **`density_small_or_dup`:** Either the minimum base is small (≤ k), or there's a duplicate base value
-- **`usesOnlyZeroOne_sum_distinct_powers`:** Equivalence between 0/1 digits and sums of distinct powers
+- **`usesOnlyZeroOne_sum_distinct_powers`:** Sums of distinct powers use only 0/1 digits
 
 ## File Structure
 
@@ -115,23 +114,28 @@ EOF
 ## References
 
 - [Erdős Problems - Problem 124](https://www.erdosproblems.com/124)
+- [Problem formulation (forum post)](https://www.erdosproblems.com/forum/thread/124#post-1892) - precise statement this proof addresses
 - J. L. Brown, Jr. ["Note on Complete Sequences of Integers"](https://www.jstor.org/stable/2311150), American Mathematical Monthly, 68 (1961), pp. 557-560. (Original source of Brown's completeness criterion)
 - J. L. Brown, Jr. ["Some Sequence-to-Sequence Transformations which Preserve Completeness"](https://www.fq.math.ca/Scanned/16-1/brown1.pdf), The Fibonacci Quarterly, Vol. 16, No. 1 (1978), pp. 19-22. (Applies the criterion)
 
-## Technical Notes
+**Note on formulation:** The forum post states the problem for strictly increasing bases d₁ < d₂ < ... < dᵣ (each ≥ 3) and asks about "sufficiently large" integers. Our formalization is a slight generalization: it allows any bases ≥ 2 (including duplicates) and proves the result for **all** natural numbers. When any base equals 2, the result is trivial (binary representation); the interesting case with all bases ≥ 3 is handled by Brown's completeness machinery.
 
-### Grind Tactic
+## Version Information
 
-Several edge cases in the strong induction are resolved using Lean 4's `grind` tactic. This handles complex case splits involving:
-- Set membership conflicts
-- Arithmetic inequalities from the density condition
-- Disjointness arguments between constructed subsets
+- **Lean:** v4.26.0-rc2
+- **Mathlib:** `89ec9c848cb1c5922fa50b91eb5156a46bd71e85`
 
-### Development Approach
+## License
 
-This formalization was developed iteratively:
-1. Established the digit equivalence (`usesOnlyZeroOne_sum_distinct_powers`)
-2. Proved Brown's completeness lemma
-3. Built density bound lemmas (`density_key'`, `density_small_or_dup`)
-4. Structured the main proof via strong induction
-5. Handled edge cases via case analysis and `grind`
+MIT License. See [LICENSE](LICENSE) file.
+
+## Acknowledgments
+
+This formalization was developed with AI assistance:
+- Primary implementation: Claude Opus 4.5
+- Planning: GPT 5.1 Pro
+- Final refinements: GPT 5.2
+
+Tools used:
+- [Lean 4 Skills for Claude](https://github.com/cameronfreer/lean4-skills/tree/main/plugins/lean4-theorem-proving) - Claude Code plugin for Lean 4 theorem proving
+- [Lean LSP MCP](https://github.com/oOo0oOo/lean-lsp-mcp) - Model Context Protocol server for Lean language server integration
