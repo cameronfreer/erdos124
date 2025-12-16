@@ -27,22 +27,21 @@ in base d(i).
 
 ## Proof Strategy
 
-The proof uses subset sum on the set P of all powers d_i^e ≤ n across all bases.
+**Special case:** If any base d_i = 2, use binary representation (trivial).
 
-**Key steps:**
+**Main case (all bases ≥ 3):** The density condition forces k ≥ 2 bases.
+
+By strong induction on n:
+- **n = 0:** Use a_i = 0 for all i.
+- **n ≤ k:** Use n ones from n different bases (each d_i^0 = 1).
+- **n > k:** Apply Brown's completeness machinery via `subset_sum_exists`.
+
+**Brown's approach for n > k:**
 1. Define P = {(i, e) : d_i^e ≤ n} with value function (i,e) ↦ d_i^e
-2. The density condition ∑ 1/(d_i-1) ≥ 1 implies ∑_{p ∈ P} p.val ≥ n
-3. By strong induction on excess = (∑ P) - n, construct a subset S ⊆ P with ∑ S = n:
-   - Base case: excess ≤ k → use "ones" (powers d_i^0 = 1)
-   - Inductive case: excess > k → density key gives base d_i ≤ k+1;
-     subtract d_i and recurse
-
-**Density key lemma:** If ∑ 1/(d_i-1) ≥ 1, the minimum base satisfies d_min ≤ k+1.
-This ensures we can always reduce excess by ≥ 2 when excess > k.
-
-**Edge case handling:** When the recursively-built set already contains the chosen
-power, we use an alternative decomposition with ones (the base case handles small
-remainders).
+2. The density condition ∑ 1/(d_i-1) ≥ 1 implies ∑_{p ∈ P} p.val ≥ n (`sum_powers_at_least`)
+3. Sort P by value; this sequence satisfies Brown's step condition: each power v ≤ 1 + (sum of smaller powers), due to the density condition (`power_step_condition`)
+4. Apply Brown's finite completeness lemma (`brown_achievable_range`) to find S ⊆ P with ∑ S = n
+5. Group chosen powers by base index to get the final a_i values
 
 ## References
 
