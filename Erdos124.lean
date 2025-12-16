@@ -955,7 +955,8 @@ lemma subset_sum_exists {k : ℕ} {d : Fin k → ℕ} (hd : ∀ i, 2 ≤ d i) (h
   · intro p hp
     rcases Finset.mem_image.mp hp with ⟨i, hi, rfl⟩
     have hi' : i < m := hs_bound i hi
-    simp [g, hi', P]
+    simp only [g, dif_pos hi']
+    exact (e ⟨i, hi'⟩).property
   · -- sum over S matches the Brown-selected indices
     have hg_inj : Set.InjOn g (↑s : Set ℕ) := by
       intro i hi j hj hij
