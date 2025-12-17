@@ -1,6 +1,8 @@
-# Erdős Problem 124 - Lean 4 Formalization
+# Erdős Problem 124 (Solved Variant) - Lean 4 Formalization
 
 A complete Lean 4 formalization of Erdős Problem 124 using Mathlib.
+
+**Note:** This formalizes the "solved/weak" variant discussed in the [forum thread](https://www.erdosproblems.com/forum/thread/124#post-1892), which allows using 1 = d^0 from each base. This is **not** the open BEGL96/gcd/k≥1 conjecture.
 
 ## Problem Statement
 
@@ -95,7 +97,12 @@ lake-manifest.json     # Dependency lock file
 ## Building
 
 ```bash
-lake update
+lake build
+```
+
+For faster builds with cached Mathlib:
+```bash
+lake exe cache get
 lake build
 ```
 
@@ -118,12 +125,14 @@ EOF
 - J. L. Brown, Jr. ["Note on Complete Sequences of Integers"](https://www.jstor.org/stable/2311150), American Mathematical Monthly, 68 (1961), pp. 557-560. (Original source of Brown's completeness criterion)
 - J. L. Brown, Jr. ["Some Sequence-to-Sequence Transformations which Preserve Completeness"](https://www.fq.math.ca/Scanned/16-1/brown1.pdf), The Fibonacci Quarterly, Vol. 16, No. 1 (1978), pp. 19-22. (Applies the criterion)
 
+**Note on page typo:** The displayed inequality on the ErdősProblems page currently has a typo (d_r instead of d_i); the correct hypothesis ∑_i 1/(d_i-1) ≥ 1 is used in the thread and here.
+
 **Note on formulation:** The forum post states the problem for strictly increasing bases d₁ < d₂ < ... < dᵣ (each ≥ 3) and asks about "sufficiently large" integers. Our formalization is a slight generalization: it allows any bases ≥ 2 (including duplicates) and proves the result for **all** natural numbers. When any base equals 2, the result is trivial (binary representation); the interesting case with all bases ≥ 3 is handled by Brown's completeness machinery.
 
 ## Version Information
 
-- **Lean:** v4.26.0-rc2
-- **Mathlib:** `89ec9c848cb1c5922fa50b91eb5156a46bd71e85`
+- **Lean:** v4.26.0
+- **Mathlib:** `2df2f0150c275ad53cb3c90f7c98ec15a56a1a67`
 
 ## License
 

@@ -15,9 +15,11 @@ import Mathlib.Order.Fin.Basic
 import Mathlib.Tactic
 
 /-!
-# Erdős Problem 124
+# Erdős Problem 124 (Solved Variant)
 
-This file contains the statement and proof of Erdős Problem 124.
+This file contains the statement and proof of the "solved/weak" variant of Erdős Problem 124.
+This variant, discussed at https://www.erdosproblems.com/forum/thread/124#post-1892, allows
+using 1 = d^0 from each base. It is **not** the open BEGL96/gcd/k≥1 conjecture.
 
 ## Statement
 
